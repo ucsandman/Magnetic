@@ -1,7 +1,7 @@
 # State: Magnetic — FCP-style NLE for Windows
 
 **Status:** RUNNING
-**Current phase:** 7
+**Current phase:** 8
 **Started:** 2026-06-11
 **Last update:** 2026-06-11
 **Baseline ref:** 26c22d9756e5f73e5266fb728e7a5252479870b2    <!-- HEAD sha captured at Stage 7 dispatch; the audit + cleanliness checks compare the COMPLETE working tree (committed + staged + unstaged + untracked) against it via repo-state.sh -->
@@ -16,7 +16,7 @@
 | 4 | Magnetic timeline kernel | completed | 2026-06-11 | 2026-06-11 | commit 2212482; all 9 criteria pass; 95 kernel tests, 99.66% line cov |
 | 5 | Timeline UI & basic edits | completed | 2026-06-11 | 2026-06-11 | commit 0b7a2ed; all 9 criteria pass; perf median <1ms vs 33ms budget |
 | 6 | Edit tools & trimming | completed | 2026-06-11 | 2026-06-11 | commit d11b866; all 9 criteria pass; 72-op undo storm deep-equal |
-| 7 | Sequence playback engine | pending | — | — | — |
+| 7 | Sequence playback engine | completed | 2026-06-11 | 2026-06-11 | commit 0cba5d3; all 9 criteria pass; drift max 4ms; full WebCodecs path (rung 0) |
 | 8 | Transitions, titles, color, audio | pending | — | — | — |
 | 9 | Export | pending | — | — | — |
 | 10 | Edit-by-transcript | pending | — | — | — |
@@ -26,15 +26,16 @@
 
 Updated by each phase as it runs. Cleared at the start of the next phase, so this always reflects the **most recent** engineering check.
 
-- Build: pass (phase 6)
-- Typecheck: pass (phase 6)
-- Lint: pass (phase 6)
-- Tests: pass (phase 6 — 128 unit, 6 E2E)
+- Build: pass (phase 7)
+- Typecheck: pass (phase 7)
+- Lint: pass (phase 7)
+- Tests: pass (phase 7 — 134 unit, 7 E2E)
 
 ## Notable events
 
 Append-only log of anything noteworthy that happened during execution (assumption corrected mid-run, retry, manual intervention, etc.). Each phase writes a line here.
 
+- 2026-06-11 — Phase 7 done (0cba5d3) — THE RISK PHASE, shipped at full strength (rung 0: WebCodecs decode + WebGL2 composite + Web Audio clock; no fallback-ladder descent). Drift max 4ms over 37s. Proxies only for non-H.264 (green-prores fixture). Declared deviation: J key pauses instead of reverse-playing the sequence (reverse decode unsupported); source-clip viewer JKL unaffected. New fixture green-prores.mov added to make-fixtures.
 - 2026-06-11 — Phase 6 done (d11b866). Undo storm green first run (72 ops). Gotcha for future tests: full-source clips have zero roll/extend media headroom — target blade-cut boundaries. Edit menu accelerators swallow Ctrl+Z for real input; synthetic E2E input bypasses menu and hits the renderer registry instead (one undo either way).
 - 2026-06-11 — Phase 5 done (0b7a2ed). Electron fires no synthetic pointermove → timeline canvas uses mouse events + window-level drag capture; canvas-in-flex blowup fixed with absolute positioning; hit rects computed from state (stale-draw class bug); phase-3 browser.spec flake root-caused (grid reflow vs cached boundingBox) and fixed. zustand added (per phase spec).
 - 2026-06-11 — Phase 4 done (2212482), resumed from WIP 30b4738. fast-check (flick-jittered, non-frame-aligned generators) shrank a real sliver bug: overwriteAt at timeFlicks=1 cut a 1-flick clip; fixed with ensureBoundary snap-to-edge. Kernel: 95 tests, 99.66% line coverage, DOM-free grep CLEAN.
