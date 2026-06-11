@@ -52,6 +52,19 @@ test('import, skim, rate, search and persistence across relaunch', async () => {
   )
 
   // ---- Hover-skim: pointer x changes the displayed filmstrip frame ----
+  // Wait until EVERY asset's artwork is ready first: each finishing background
+  // job re-renders the grid, and a reflow between boundingBox() and the mouse
+  // moves would aim the skim at stale coordinates (observed transient flake).
+  await page.waitForFunction(
+    async () => {
+      const lib = await window.api.getLibrary()
+      return Object.values(lib.assets).every((asset) =>
+        asset.video !== undefined ? asset.filmstrip !== undefined : asset.waveform !== undefined
+      )
+    },
+    undefined,
+    { timeout: 60_000 }
+  )
   const strip = bars.getByTestId('asset-strip')
   await expect(strip).toBeVisible({ timeout: 30_000 })
   const box = (await strip.boundingBox())!

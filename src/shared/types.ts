@@ -52,10 +52,9 @@ export interface Event {
   projectIds: string[]
 }
 
-/** Sequence is fleshed out in phase 4 — stub type for now. */
-export interface Sequence {
-  id: string
-}
+/** The real magnetic-timeline sequence (phase 4 kernel). */
+export type { Sequence } from './timeline/model'
+import type { Sequence } from './timeline/model'
 
 export interface Project {
   id: string

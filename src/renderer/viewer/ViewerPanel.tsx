@@ -41,6 +41,7 @@ export function ViewerPanel(): ReactNode {
 type PlayState = 'paused' | 'forward' | 'reverse'
 
 function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
+  const { setMarkedRange, skimTarget } = useLibrary()
   const fps = asset.video?.fps ?? FALLBACK_FPS
   const durationFlicks = asset.durationFlicks
   const sectionRef = useRef<HTMLElement>(null)
@@ -172,6 +173,18 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
     return frameToFlicks(flicksToFrame(secondsToFlicks(video.currentTime), fps), fps)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fps stable per asset
   }, [])
+
+  // Publish I/O marks so timeline edit commands (E/W/Q/D) can use the range.
+  useEffect(() => {
+    setMarkedRange({ assetId: asset.id, inFlicks: markIn, outFlicks: markOut })
+  }, [asset.id, markIn, markOut, setMarkedRange])
+
+  // Timeline skim drives a static frame preview of the clip under the skimmer.
+  useEffect(() => {
+    if (skimTarget !== null && skimTarget.assetId === asset.id) {
+      seekToFlicks(skimTarget.mediaFlicks)
+    }
+  }, [skimTarget, asset.id, seekToFlicks])
 
   // Keyboard transport (JKL etc.) — active while focus is inside the viewer.
   useEffect(() => {

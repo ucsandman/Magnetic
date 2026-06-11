@@ -28,6 +28,50 @@ export const setRatingPayloadSchema = z.object({
 })
 export type SetRatingPayload = z.infer<typeof setRatingPayloadSchema>
 
+const rationalSchema = z.object({
+  num: z.number().int().positive(),
+  den: z.number().int().positive()
+})
+
+const spineClipSchema = z.object({
+  kind: z.literal('clip'),
+  id: z.string().min(1),
+  assetId: z.string().min(1),
+  mediaInFlicks: z.number().nonnegative(),
+  durationFlicks: z.number().positive(),
+  sourceDurationFlicks: z.number().positive()
+})
+
+const gapClipSchema = z.object({
+  kind: z.literal('gap'),
+  id: z.string().min(1),
+  durationFlicks: z.number().positive()
+})
+
+const connectedClipSchema = z.object({
+  id: z.string().min(1),
+  assetId: z.string().min(1),
+  parentClipId: z.string().min(1),
+  offsetFlicks: z.number(),
+  lane: z.number().int(),
+  mediaInFlicks: z.number().nonnegative(),
+  durationFlicks: z.number().positive(),
+  sourceDurationFlicks: z.number().positive()
+})
+
+export const sequenceSchema = z.object({
+  id: z.string().min(1),
+  fps: rationalSchema,
+  spine: z.array(z.discriminatedUnion('kind', [spineClipSchema, gapClipSchema])),
+  connected: z.array(connectedClipSchema)
+})
+
+export const saveSequencePayloadSchema = z.object({
+  projectId: z.string().min(1),
+  sequence: sequenceSchema
+})
+export type SaveSequencePayload = z.infer<typeof saveSequencePayloadSchema>
+
 /** The typed API exposed to the renderer via contextBridge as `window.api`. */
 export interface MagneticApi {
   diagBinaries(): Promise<DiagBinariesResult>
@@ -36,6 +80,9 @@ export interface MagneticApi {
   importDialog(): Promise<import('./types').ImportResult>
   importPaths(paths: string[]): Promise<import('./types').ImportResult>
   setAssetRating(assetId: string, rating: z.infer<typeof ratingSchema>): Promise<void>
+  /** Default project (created on first call), including its persisted sequence. */
+  getProject(): Promise<import('./types').Project>
+  saveSequence(projectId: string, sequence: import('./types').Sequence): Promise<void>
   onLibraryChanged(cb: (snapshot: import('./types').LibrarySnapshot) => void): () => void
   /** Resolve the on-disk path of a dragged-in File (webUtils). */
   pathForFile(file: File): string

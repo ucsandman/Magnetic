@@ -3,7 +3,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { app } from 'electron'
-import type { Event, Library, MediaAsset, Project, Rating } from '../../shared/types'
+import type { Event, Library, MediaAsset, Project, Rating, Sequence } from '../../shared/types'
 import { readJson, writeJsonAtomic } from './atomic'
 
 interface LibraryJson {
@@ -123,6 +123,30 @@ export class LibraryStore {
 
   setRating(assetId: string, rating: Rating): void {
     this.updateAsset(assetId, { rating })
+  }
+
+  /** The library's single default project, created (and persisted) on first use. */
+  getOrCreateDefaultProject(): Project {
+    if (this.projects.length === 0) {
+      const project: Project = {
+        id: randomUUID(),
+        name: 'Untitled Project',
+        sequence: { id: randomUUID(), fps: { num: 30, den: 1 }, spine: [], connected: [] }
+      }
+      this.projects.push(project)
+      if (!this.defaultEvent.projectIds.includes(project.id)) {
+        this.defaultEvent.projectIds.push(project.id)
+      }
+      this.scheduleSave()
+    }
+    return this.projects[0]
+  }
+
+  saveProjectSequence(projectId: string, sequence: Sequence): void {
+    const project = this.projects.find((candidate) => candidate.id === projectId)
+    if (project === undefined) throw new Error(`unknown project: ${projectId}`)
+    project.sequence = sequence
+    this.scheduleSave()
   }
 
   /** Subscribe to any library mutation. Returns unsubscribe. */

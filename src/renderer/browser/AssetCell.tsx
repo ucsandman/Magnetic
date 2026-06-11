@@ -30,6 +30,11 @@ export function AssetCell({ asset, selected, onSelect, onOpen }: AssetCellProps)
       className={`asset-cell ${selected ? 'selected' : ''}`}
       data-testid={`asset-cell-${asset.fileName}`}
       data-rating={asset.rating}
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.setData('application/x-magnetic-asset', asset.id)
+        event.dataTransfer.effectAllowed = 'copy'
+      }}
       onClick={onSelect}
       onDoubleClick={onOpen}
     >

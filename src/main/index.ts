@@ -62,8 +62,12 @@ app.whenReady().then(() => {
     getSnapshot: () => buildSnapshot(),
     importPaths: (paths) => importAndProcess(paths),
     importDialog: () => importViaDialog(),
-    setRating: (assetId, rating) => getStore().setRating(assetId, rating)
+    setRating: (assetId, rating) => getStore().setRating(assetId, rating),
+    getProject: () => getStore().getOrCreateDefaultProject(),
+    saveSequence: (projectId, sequence) => getStore().saveProjectSequence(projectId, sequence)
   })
+  // Flush any debounced library/project writes before the process exits.
+  app.on('before-quit', () => getStore().saveNow())
   buildAppMenu({ onImportMedia: () => void importViaDialog() })
   createWindow()
 

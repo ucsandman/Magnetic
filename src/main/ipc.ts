@@ -4,12 +4,13 @@ import { existsSync } from 'fs'
 import { z } from 'zod'
 import {
   importPathsPayloadSchema,
+  saveSequencePayloadSchema,
   setRatingPayloadSchema,
   type BinaryProbeResult,
   type DiagBinariesResult
 } from '../shared/ipc'
 import { IPC } from '../shared/channels'
-import type { ImportResult, LibrarySnapshot } from '../shared/types'
+import type { ImportResult, LibrarySnapshot, Project, Sequence } from '../shared/types'
 import { ffprobePath, whisperPath } from './binaries'
 
 /**
@@ -66,6 +67,8 @@ export interface IpcDeps {
   importPaths(paths: string[]): Promise<ImportResult>
   importDialog(): Promise<ImportResult>
   setRating(assetId: string, rating: 'none' | 'favorite' | 'rejected'): void
+  getProject(): Project
+  saveSequence(projectId: string, sequence: Sequence): void
 }
 
 export function isTestMode(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -85,6 +88,12 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
 
   handleValidated(IPC.assetSetRating, setRatingPayloadSchema, async (payload) => {
     deps.setRating(payload.assetId, payload.rating)
+  })
+
+  handleValidated(IPC.projectGet, z.undefined(), async () => deps.getProject())
+
+  handleValidated(IPC.projectSaveSequence, saveSequencePayloadSchema, async (payload) => {
+    deps.saveSequence(payload.projectId, payload.sequence)
   })
 
   // Test-only surface — never registered outside MAGNETIC_TEST=1.

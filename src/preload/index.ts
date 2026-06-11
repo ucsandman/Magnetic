@@ -9,6 +9,9 @@ const api: MagneticApi = {
   importDialog: () => ipcRenderer.invoke(IPC.libraryImportDialog),
   importPaths: (paths) => ipcRenderer.invoke(IPC.libraryImportPaths, { paths }),
   setAssetRating: (assetId, rating) => ipcRenderer.invoke(IPC.assetSetRating, { assetId, rating }),
+  getProject: () => ipcRenderer.invoke(IPC.projectGet),
+  saveSequence: (projectId, sequence) =>
+    ipcRenderer.invoke(IPC.projectSaveSequence, { projectId, sequence }),
   onLibraryChanged: (cb) => {
     const listener = (_event: unknown, snapshot: LibrarySnapshot): void => cb(snapshot)
     ipcRenderer.on(IPC.libraryChanged, listener)

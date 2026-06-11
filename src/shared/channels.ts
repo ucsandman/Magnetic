@@ -10,6 +10,8 @@ export const IPC = {
   libraryImportPaths: 'library:importPaths',
   libraryImportDialog: 'library:importDialog',
   assetSetRating: 'asset:setRating',
+  projectGet: 'project:get',
+  projectSaveSequence: 'project:saveSequence',
   /** main -> renderer push: full library snapshot after any change */
   libraryChanged: 'library:changed',
   /** Registered only when MAGNETIC_TEST=1 (see ipc.ts registerIpc). */

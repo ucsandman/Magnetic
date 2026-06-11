@@ -12,7 +12,13 @@ const deps: IpcDeps = {
   getSnapshot: () => ({ id: 'l', name: 'L', path: 'p', events: [], assets: {} }),
   importPaths: async () => ({ importedIds: [], errors: [] }),
   importDialog: async () => ({ importedIds: [], errors: [] }),
-  setRating: () => {}
+  setRating: () => {},
+  getProject: () => ({
+    id: 'p1',
+    name: 'P',
+    sequence: { id: 's1', fps: { num: 30, den: 1 }, spine: [], connected: [] }
+  }),
+  saveSequence: () => {}
 }
 
 function registeredChannels(): string[] {

@@ -27,10 +27,11 @@ export default function App(): ReactNode {
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
   }, [])
 
-  // Decoder spike harness — test builds only (window.api.__test is gated on MAGNETIC_TEST=1).
+  // Test harnesses — test builds only (window.api.__test is gated on MAGNETIC_TEST=1).
   useEffect(() => {
     if (window.api.__test !== undefined) {
       void import('./playback/decoder/spike').then((module) => module.installDecoderSpike())
+      void import('./state/timeline-store').then((module) => module.installTimelineTestHooks())
     }
   }, [])
 
