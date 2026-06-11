@@ -43,7 +43,7 @@ describe('append', () => {
     expect(result.next).toBe(s)
   })
 
-  it('rejects clips whose media window exceeds the source', () => {
+  it('rejects clips whose media range exceeds the source', () => {
     const s = seq([])
     const result = append(s, { clip: newClip('b', 100, 550) }) // 550+100 > 600
     expect(result.error).toBeDefined()
@@ -360,7 +360,9 @@ describe('slip', () => {
 
   it('clamps the slip within [0, source - duration]', () => {
     const s = seq([clip('a', 10, 5)])
-    expect((slip(s, { clipId: 'a', deltaFlicks: -100 * F }).next.spine[0] as Clip).mediaInFlicks).toBe(0)
+    expect(
+      (slip(s, { clipId: 'a', deltaFlicks: -100 * F }).next.spine[0] as Clip).mediaInFlicks
+    ).toBe(0)
     expect(
       (slip(s, { clipId: 'a', deltaFlicks: 100_000 * F }).next.spine[0] as Clip).mediaInFlicks
     ).toBe(590 * F)
@@ -399,6 +401,87 @@ describe('move', () => {
     const result = move(s, { clipId: 'a', toIndex: 0 })
     expect(result.next).toBe(s)
     expect(result.error).toBeUndefined()
+  })
+})
+
+describe('sub-frame edge clamps (fast-check regressions)', () => {
+  it('overwriting one flick past a frame boundary snaps instead of cutting a sliver', () => {
+    // shrunk fast-check counterexample: 1-frame clip, overwrite at timeFlicks=1
+    const s = seq([clip('a', 1)])
+    const { next } = overwriteAt(s, { clip: newClip('x', 1), timeFlicks: 1 })
+    for (const item of next.spine) {
+      expect(item.durationFlicks).toBeGreaterThanOrEqual(F)
+    }
+  })
+
+  it('inserting one flick into a clip snaps to the nearest boundary instead of splitting', () => {
+    const s = seq([clip('a', 10)])
+    const { next } = insertAt(s, { clip: newClip('x', 5), timeFlicks: 1 })
+    expect(next.spine.map((item) => item.id)).toEqual(['x', 'a'])
+    expect(sequenceDuration(next)).toBe(15 * F)
+  })
+
+  it('overwriting beyond the end never creates a sub-frame gap filler', () => {
+    const s = seq([clip('a', 10)])
+    const { next } = overwriteAt(s, { clip: newClip('x', 5), timeFlicks: 10 * F + 1 })
+    expect(next.spine.map((item) => item.id)).toEqual(['a', 'x'])
+    const farther = overwriteAt(s, { clip: newClip('x', 5), timeFlicks: 13 * F })
+    expect(farther.next.spine[1].kind).toBe('gap')
+    expect(farther.next.spine[1].durationFlicks).toBe(3 * F)
+  })
+})
+
+describe('typed-error and no-op edges', () => {
+  it('append rejects a negative media in-point', () => {
+    const s = seq([])
+    const result = append(s, { clip: { ...newClip('b', 5), mediaInFlicks: -1 } })
+    expect(result.error?.code).toBe('invalid-clip')
+    expect(result.next).toBe(s)
+  })
+
+  it('connectAt rejects lane 0', () => {
+    const s = seq([clip('a', 10)])
+    const result = connectAt(s, { clip: newClip('cc', 4), timeFlicks: 0, lane: 0 })
+    expect(result.error?.code).toBe('invalid-target')
+  })
+
+  it('connectAt can attach to a gap', () => {
+    const s = seq([clip('a', 10), gap('g', 10)])
+    const { next, error } = connectAt(s, { clip: newClip('cc', 4), timeFlicks: 15 * F, lane: 1 })
+    expect(error).toBeUndefined()
+    expect(next.connected[0].parentClipId).toBe('g')
+  })
+
+  it('liftDelete with an unknown id is a typed-error no-op', () => {
+    const s = seq([clip('a', 10)])
+    const result = liftDelete(s, { ids: ['zzz'] })
+    expect(result.error?.code).toBe('unknown-id')
+    expect(result.next).toBe(s)
+  })
+
+  it('deleting nothing is a clean no-op', () => {
+    const s = seq([clip('a', 10)])
+    expect(rippleDelete(s, { ids: [] }).next).toBe(s)
+    expect(liftDelete(s, { ids: [] }).next).toBe(s)
+  })
+
+  it('blade and trim on unknown ids are typed-error no-ops', () => {
+    const s = seq([clip('a', 10)])
+    expect(blade(s, { clipId: 'zzz', timeFlicks: F }).error?.code).toBe('unknown-id')
+    expect(trimRipple(s, { clipId: 'zzz', edge: 'tail', deltaFlicks: F }).error?.code).toBe(
+      'unknown-id'
+    )
+    expect(slip(s, { clipId: 'zzz', deltaFlicks: F }).error?.code).toBe('unknown-id')
+    expect(move(s, { clipId: 'zzz', toIndex: 0 }).error?.code).toBe('unknown-id')
+  })
+
+  it('split ids stay unique even when a clip re-covers an old cut point', () => {
+    const s = seq([clip('a', 10)])
+    const first = blade(s, { clipId: 'a', timeFlicks: 3 * F }) // tail gets id a:<3F>
+    const healed = trimRipple(first.next, { clipId: 'a', edge: 'tail', deltaFlicks: 2 * F })
+    const second = blade(healed.next, { clipId: 'a', timeFlicks: 3 * F }) // same cut again
+    const ids = second.next.spine.map((item) => item.id)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 })
 

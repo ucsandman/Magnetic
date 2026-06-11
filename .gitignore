@@ -5,6 +5,7 @@ resources/bin/
 fixtures/
 playwright-report/
 test-results/
+coverage/
 .dashclaw-local/
 .DS_Store
 .eslintcache

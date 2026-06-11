@@ -81,4 +81,23 @@ describe('derived spine positions', () => {
     expect(connectedStartOf(s, 'c1')).toBe(13 * F)
     expect(connectedStartOf(s, 'missing')).toBeNull()
   })
+
+  it('connectedStartOf returns null when the parent is gone from the spine', () => {
+    const s: Sequence = {
+      ...seq([clip('a', 10)]),
+      connected: [
+        {
+          id: 'c1',
+          assetId: 'x',
+          parentClipId: 'deleted',
+          offsetFlicks: 0,
+          lane: 1,
+          mediaInFlicks: 0,
+          durationFlicks: 5 * F,
+          sourceDurationFlicks: 600 * F
+        }
+      ]
+    }
+    expect(connectedStartOf(s, 'c1')).toBeNull()
+  })
 })
