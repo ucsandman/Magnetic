@@ -6,18 +6,10 @@ import { clip, connected, seq } from './testing'
 describe('setClipFx', () => {
   it('sets transform fx on a spine clip', () => {
     const s = seq([clip('a', 10)])
-    const { next, error } = setClipFx(s, {
-      clipId: 'a',
-      fx: { posX: 100, posY: -50, scale: 50, rotation: 90, opacity: 80 }
-    })
+    const fx = { ...DEFAULT_FX, posX: 100, posY: -50, scale: 50, rotation: 90, opacity: 80 }
+    const { next, error } = setClipFx(s, { clipId: 'a', fx })
     expect(error).toBeUndefined()
-    expect((next.spine[0] as Clip).fx).toEqual({
-      posX: 100,
-      posY: -50,
-      scale: 50,
-      rotation: 90,
-      opacity: 80
-    })
+    expect((next.spine[0] as Clip).fx).toEqual(fx)
   })
 
   it('sets fx on a connected clip', () => {

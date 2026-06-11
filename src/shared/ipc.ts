@@ -38,7 +38,33 @@ const clipFxSchema = z.object({
   posY: z.number(),
   scale: z.number(),
   rotation: z.number(),
-  opacity: z.number()
+  opacity: z.number(),
+  // phase-8 color board + audio params; defaults keep older saved fx valid
+  exposure: z.number().default(0),
+  contrast: z.number().default(1),
+  saturation: z.number().default(1),
+  temperature: z.number().default(0),
+  fadeInFlicks: z.number().default(0),
+  fadeOutFlicks: z.number().default(0),
+  volumeDb: z.number().default(0),
+  pan: z.number().default(0)
+})
+
+const titleDataSchema = z.object({
+  text: z.string(),
+  font: z.string(),
+  sizePx: z.number(),
+  color: z.string(),
+  x: z.number(),
+  y: z.number(),
+  preset: z.enum(['basic', 'lowerThird', 'bumper'])
+})
+
+const transitionSchema = z.object({
+  id: z.string().min(1),
+  afterClipId: z.string().min(1),
+  durationFlicks: z.number().positive(),
+  kind: z.enum(['dissolve', 'wipeL', 'wipeR', 'fadeBlack'])
 })
 
 const spineClipSchema = z.object({
@@ -66,14 +92,16 @@ const connectedClipSchema = z.object({
   mediaInFlicks: z.number().nonnegative(),
   durationFlicks: z.number().positive(),
   sourceDurationFlicks: z.number().positive(),
-  fx: clipFxSchema.optional()
+  fx: clipFxSchema.optional(),
+  titleData: titleDataSchema.optional()
 })
 
 export const sequenceSchema = z.object({
   id: z.string().min(1),
   fps: rationalSchema,
   spine: z.array(z.discriminatedUnion('kind', [spineClipSchema, gapClipSchema])),
-  connected: z.array(connectedClipSchema)
+  connected: z.array(connectedClipSchema),
+  transitions: z.array(transitionSchema).optional()
 })
 
 export const saveSequencePayloadSchema = z.object({

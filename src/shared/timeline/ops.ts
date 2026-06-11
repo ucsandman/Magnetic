@@ -1,7 +1,16 @@
 import { flicksPerFrame } from '../timecode'
-import type { Clip, ClipFx, ConnectedClip, Sequence, SpineItem } from './model'
+import type {
+  Clip,
+  ClipFx,
+  ConnectedClip,
+  Sequence,
+  SpineItem,
+  Transition,
+  TransitionKind
+} from './model'
 import { sequenceDuration, spineIndexOf, spineStartOf } from './model'
 import { itemAtTime, reattachByTime, resolveLaneCollisions } from './magnetic'
+import { editPointIndexOfCut, editPointInfo, pruneTransitions, transitionsOf } from './transitions'
 
 /**
  * Edit operations on the magnetic timeline. Every op is a total function
@@ -26,10 +35,20 @@ export interface OpResult {
 /** Clip payload for ops that introduce new media (kind is implied). */
 export type ClipInput = Omit<Clip, 'kind'>
 
-function ok(prev: Sequence, spine: SpineItem[], connected: ConnectedClip[]): OpResult {
+function ok(
+  prev: Sequence,
+  spine: SpineItem[],
+  connected: ConnectedClip[],
+  transitions?: Transition[]
+): OpResult {
   const resolved = resolveLaneCollisions(spine, connected)
+  const next: Sequence = { ...prev, spine, connected: resolved }
+  if (transitions !== undefined) next.transitions = transitions
+  // spine edits can remove cuts or shrink handles — keep transitions valid
+  const pruned = pruneTransitions(next)
+  if (pruned !== undefined) next.transitions = pruned
   return {
-    next: { ...prev, spine, connected: resolved },
+    next,
     inverse: { type: 'restore', sequence: prev }
   }
 }
@@ -397,7 +416,21 @@ export function slip(seq: Sequence, args: { clipId: string; deltaFlicks: number 
   return ok(seq, spine, seq.connected)
 }
 
-export const DEFAULT_FX: ClipFx = { posX: 0, posY: 0, scale: 100, rotation: 0, opacity: 100 }
+export const DEFAULT_FX: ClipFx = {
+  posX: 0,
+  posY: 0,
+  scale: 100,
+  rotation: 0,
+  opacity: 100,
+  exposure: 0,
+  contrast: 1,
+  saturation: 1,
+  temperature: 0,
+  fadeInFlicks: 0,
+  fadeOutFlicks: 0,
+  volumeDb: 0,
+  pan: 0
+}
 
 /** Set the video transform of a spine clip or connected clip (undoable). */
 export function setClipFx(seq: Sequence, args: { clipId: string; fx: ClipFx }): OpResult {
@@ -416,6 +449,80 @@ export function setClipFx(seq: Sequence, args: { clipId: string; fx: ClipFx }): 
   const connected = [...seq.connected]
   connected[connectedIndex] = { ...connected[connectedIndex], fx: args.fx }
   return ok(seq, seq.spine, connected)
+}
+
+/** Add (or replace) a centered transition at an edit point between two clips. */
+export function addTransition(
+  seq: Sequence,
+  args: { editPointIndex: number; durationFlicks: number; kind: TransitionKind }
+): OpResult {
+  const info = editPointInfo(seq, args.editPointIndex)
+  if (info === null) {
+    return fail(seq, 'invalid-target', 'transitions need an edit point between two clips')
+  }
+  const minFlicks = flicksPerFrame(seq.fps)
+  if (info.maxDurationFlicks < minFlicks) {
+    return fail(seq, 'invalid-target', 'no media handles on one side of the cut')
+  }
+  const duration = clamp(args.durationFlicks, minFlicks, info.maxDurationFlicks)
+  const ids = new Set(transitionsOf(seq).map((transition) => transition.id))
+  const id = uniqueId(ids, `tr:${info.left.id}`)
+  const kept = transitionsOf(seq).filter((transition) => transition.afterClipId !== info.left.id)
+  return ok(seq, seq.spine, seq.connected, [
+    ...kept,
+    { id, afterClipId: info.left.id, durationFlicks: duration, kind: args.kind }
+  ])
+}
+
+export function removeTransition(seq: Sequence, args: { transitionId: string }): OpResult {
+  const list = transitionsOf(seq)
+  if (!list.some((transition) => transition.id === args.transitionId)) {
+    return fail(seq, 'unknown-id', `no transition "${args.transitionId}"`)
+  }
+  return ok(
+    seq,
+    seq.spine,
+    seq.connected,
+    list.filter((transition) => transition.id !== args.transitionId)
+  )
+}
+
+export function resizeTransition(
+  seq: Sequence,
+  args: { transitionId: string; durationFlicks: number }
+): OpResult {
+  const list = transitionsOf(seq)
+  const target = list.find((transition) => transition.id === args.transitionId)
+  if (target === undefined) return fail(seq, 'unknown-id', `no transition "${args.transitionId}"`)
+  const info = editPointInfo(seq, editPointIndexOfCut(seq, target.afterClipId))
+  if (info === null) return fail(seq, 'invalid-target', 'transition cut no longer exists')
+  const duration = clamp(args.durationFlicks, flicksPerFrame(seq.fps), info.maxDurationFlicks)
+  return ok(
+    seq,
+    seq.spine,
+    seq.connected,
+    list.map((transition) =>
+      transition.id === args.transitionId ? { ...transition, durationFlicks: duration } : transition
+    )
+  )
+}
+
+export function setTransitionKind(
+  seq: Sequence,
+  args: { transitionId: string; kind: TransitionKind }
+): OpResult {
+  const list = transitionsOf(seq)
+  if (!list.some((transition) => transition.id === args.transitionId)) {
+    return fail(seq, 'unknown-id', `no transition "${args.transitionId}"`)
+  }
+  return ok(
+    seq,
+    seq.spine,
+    seq.connected,
+    list.map((transition) =>
+      transition.id === args.transitionId ? { ...transition, kind: args.kind } : transition
+    )
+  )
 }
 
 export function move(seq: Sequence, args: { clipId: string; toIndex: number }): OpResult {

@@ -9,7 +9,7 @@ import type { Rational } from '../timecode'
  * spine is contiguous and overlap-free by construction.
  */
 
-/** Per-clip video transform (phase 7); anchor center, sequence-space 1920×1080. */
+/** Per-clip effect parameters (phases 7–8): transform, color board, audio. */
 export interface ClipFx {
   posX: number
   posY: number
@@ -19,6 +19,21 @@ export interface ClipFx {
   rotation: number
   /** Percent, 100 = opaque. */
   opacity: number
+  /** Color board: −1..+1 stops. */
+  exposure: number
+  /** 0..2, 1 = neutral. */
+  contrast: number
+  /** 0..2, 1 = neutral, 0 = grayscale. */
+  saturation: number
+  /** −1 cool .. +1 warm. */
+  temperature: number
+  /** Audio fades at the clip edges. */
+  fadeInFlicks: number
+  fadeOutFlicks: number
+  /** −96..+12 dB, 0 = unity. */
+  volumeDb: number
+  /** −1 left .. +1 right. */
+  pan: number
 }
 
 export interface Clip {
@@ -52,12 +67,32 @@ export interface ConnectedClip {
   durationFlicks: number
   sourceDurationFlicks: number
   fx?: ClipFx
+  titleData?: TitleData
 }
 
-/** Placeholder — transitions are modeled in phase 8. */
+export type TransitionKind = 'dissolve' | 'wipeL' | 'wipeR' | 'fadeBlack'
+
+/**
+ * A centered transition at a spine cut. Attached to the LEFT clip's id (not a
+ * raw edit-point index) so ripple edits elsewhere cannot silently re-target it.
+ */
 export interface Transition {
   id: string
-  kind: 'transition'
+  afterClipId: string
+  durationFlicks: number
+  kind: TransitionKind
+}
+
+/** Text overlay payload carried by a connected clip (phase 8 titles). */
+export interface TitleData {
+  text: string
+  font: string
+  sizePx: number
+  color: string
+  /** Center position in 1920×1080 sequence space. */
+  x: number
+  y: number
+  preset: 'basic' | 'lowerThird' | 'bumper'
 }
 
 export interface Sequence {
@@ -65,6 +100,7 @@ export interface Sequence {
   fps: Rational
   spine: SpineItem[]
   connected: ConnectedClip[]
+  transitions?: Transition[]
 }
 
 export function emptySequence(id: string, fps: Rational): Sequence {
