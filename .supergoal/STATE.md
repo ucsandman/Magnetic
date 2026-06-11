@@ -1,7 +1,7 @@
 # State: Magnetic — FCP-style NLE for Windows
 
 **Status:** RUNNING
-**Current phase:** 10
+**Current phase:** 11
 **Started:** 2026-06-11
 **Last update:** 2026-06-11
 **Baseline ref:** 26c22d9756e5f73e5266fb728e7a5252479870b2    <!-- HEAD sha captured at Stage 7 dispatch; the audit + cleanliness checks compare the COMPLETE working tree (committed + staged + unstaged + untracked) against it via repo-state.sh -->
@@ -19,22 +19,23 @@
 | 7 | Sequence playback engine | completed | 2026-06-11 | 2026-06-11 | commit 0cba5d3; all 9 criteria pass; drift max 4ms; full WebCodecs path (rung 0) |
 | 8 | Transitions, titles, color, audio | completed | 2026-06-11 | 2026-06-11 | commit c38aa8a; all 8 criteria pass; dissolve mid exact (A+B)/2 |
 | 9 | Export | completed | 2026-06-11 | 2026-06-11 | commit b4de5b7; all 8 criteria pass; WYSIWYG diff 0.97/255 |
-| 10 | Edit-by-transcript | pending | — | — | — |
+| 10 | Edit-by-transcript | completed | 2026-06-11 | 2026-06-11 | commit cf790be; all 9 criteria pass; 100% word accuracy; Δ0.00-frame cuts |
 | 11 | Polish & Harden | pending | — | — | — |
 
 ## Engineering check status
 
 Updated by each phase as it runs. Cleared at the start of the next phase, so this always reflects the **most recent** engineering check.
 
-- Build: pass (phase 9)
-- Typecheck: pass (phase 9)
-- Lint: pass (phase 9)
-- Tests: pass (phase 9 — 156 unit, 9 E2E)
+- Build: pass (phase 10)
+- Typecheck: pass (phase 10)
+- Lint: pass (phase 10)
+- Tests: pass (phase 10 — 162 unit, 10 E2E)
 
 ## Notable events
 
 Append-only log of anything noteworthy that happened during execution (assumption corrected mid-run, retry, manual intervention, etc.). Each phase writes a line here.
 
+- 2026-06-11 — Phase 10 done (cf790be). base.en delivered 100% word accuracy on the TTS fixture (no model bump). Whisper flags verified empirically: -ml 1 -sow -oj -ojf gives one-word segments with ms offsets + token p. Transcript panel is a pure projection — undo correctness fell out for free.
 - 2026-06-11 — Phase 9 done (b4de5b7). WYSIWYG export shipped at full pipeline strength; engine hardened en route: VideoDecoder.flush() end-of-stream hang (raced), isExporting guard against snapshot-broadcast still-renders, decode-gate B-frame deadlock breaker, arcTo negative-radius clamp. WYSIWYG diff 0.97/255 over 15 grid points.
 - 2026-06-11 — Phase 8 done (c38aa8a), resumed from WIP ef620f9. Declared deviations: transitions afterClipId-attached (ripple-safe vs spec editPointIndex); fade handles via Inspector fields (no timeline edge drags); transition resize op-only (no badge drag). wipeR shader factor was inverted — caught by pixel E2E. Effects pixel asserts use uniform-color fixtures for exact math.
 - 2026-06-11 — (superseded) RUN PAUSED by user (usage limit) mid-phase-8 at WIP ef620f9. Phases 1-7 complete. DONE in 8: kernel transitions (afterClipId-attached — declared deviation from spec's editPointIndex, ripple-safe; ops addTransition/removeTransition/resizeTransition/setTransitionKind; clamp 2×min(handle); prune+clamp inside ops ok() after every edit; transitionAt(seq,t) → {kind, aClipId, bClipId, progress}); ClipFx += exposure/contrast/saturation/temperature/fadeInFlicks/fadeOutFlicks/volumeDb/pan (DEFAULT_FX updated); ConnectedClip.titleData (presets basic|lowerThird|bumper); zod schemas with defaults. REMAINING in 8 (plan in session tasks 8B-8D): (B) compositor transition GLSL program (dissolve mix / wipeL+R smoothstep 2px / fadeBlack via-black) drawing full-canvas quad sampling BOTH slot textures with per-rect UV; engine: per-item visible windows extended by transition half-widths (in/out), both-side decode at cuts (media formula mediaIn+(t-start) naturally yields handles), blend layer when transitionAt(t) active, also in renderStill; color uniforms (pipeline temp→exposure→contrast→saturation) in fragment shader; title layers = offscreen 2D canvas (2× supersample, wrap 80%) → texture via CompositedLayer.image, cache by titleData hash, bumper baked 0.5s fade via layer alpha. (C) audio-graph: gain ramps from pure fn gainAutomationFor() in src/renderer/playback/automation.ts + unit test (rising envelope), StereoPannerNode, volume dB→gain; UI: Ctrl+T = default 1s dissolve at edit point nearest playhead (store command), transition badge at cuts on canvas + right-click cycles kind, Del removes when selected(?); Browser Titles tab (3 presets, dblclick connects at playhead via connectAt+titleData, default 4s lane 1); Inspector tabs Video/Color/Audio/Title with Reset (all via setClipFx/setTitleData ops; setTitleData op NOT yet written). (D) e2e/effects.spec.ts: handles via trim (bars tail -2s, red head +2s, cut 8s); dissolve mid = |mid-(a+b)/2|<25/ch; wipeL p=0.5 left=B right=A; fadeBlack mid ≤20; title region readPixels diff-count; exposure +1 brightens bars gray center; saturation 0 → R≈G≈B±6 at a found-colorful px; inspector live; screenshots transition/title/inspector to .supergoal/evidence/phase-8/; 5 mandatory commands; VERIFY/DONE then phases 9-11.
