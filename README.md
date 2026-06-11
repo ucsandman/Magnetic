@@ -2,6 +2,8 @@
 
 A Final Cut Pro-style non-linear video editor for Windows, built with Electron, React, and TypeScript. Features a magnetic timeline, WebCodecs/WebGL2 playback, ffmpeg-powered import/export, and whisper.cpp-powered edit-by-transcript.
 
+![Magnetic — timeline with an edit](docs/screenshots/timeline-with-edit.png)
+
 > Portfolio project. The design is an homage to Apple's Final Cut Pro — the magnetic timeline, three-panel layout, JKL transport, and edit grammar are modeled on it as the design reference. Not affiliated with Apple; no Apple trademarks are used and "Magnetic" is an original product name.
 
 ## Features
@@ -145,6 +147,14 @@ flowchart TB
 - `e2e/` — Playwright Electron tests; `resources/bin/` and `fixtures/` are gitignored artifacts
 
 Renderer security: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, CSP set in `index.html`, no remote URLs; media is served over a custom `mfile://` protocol scoped to the library. Ctrl+Shift+D toggles a diagnostics overlay that spawn-verifies the bundled binaries.
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![Filmstrip browser](docs/screenshots/browser.png) Filmstrip browser — hover-skim, ratings, background jobs | ![Viewer](docs/screenshots/viewer.png) Viewer — JKL transport, frame stepping, in/out marks |
+| ![Edit-by-transcript](docs/screenshots/transcript.png) Edit-by-transcript — word-click seek, delete text to cut | ![Export dialog](docs/screenshots/export-dialog.png) Export — H.264/AAC MP4 with progress + cancel |
+| ![Shortcut overlay](docs/screenshots/shortcut-overlay.png) `Shift+?` overlay — every live binding | ![500-clip timeline](docs/screenshots/timeline-500-clips.png) 500-clip timeline — 0.7 ms median draw |
 
 ## Known limitations
 
