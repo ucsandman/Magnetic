@@ -1,0 +1,9 @@
+node_modules/
+dist/
+out/
+resources/bin/
+fixtures/
+playwright-report/
+test-results/
+.dashclaw-local/
+*.log
