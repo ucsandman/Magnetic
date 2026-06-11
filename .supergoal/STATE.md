@@ -1,7 +1,7 @@
 # State: Magnetic — FCP-style NLE for Windows
 
 **Status:** RUNNING
-**Current phase:** 8
+**Current phase:** 9
 **Started:** 2026-06-11
 **Last update:** 2026-06-11
 **Baseline ref:** 26c22d9756e5f73e5266fb728e7a5252479870b2    <!-- HEAD sha captured at Stage 7 dispatch; the audit + cleanliness checks compare the COMPLETE working tree (committed + staged + unstaged + untracked) against it via repo-state.sh -->
@@ -17,7 +17,7 @@
 | 5 | Timeline UI & basic edits | completed | 2026-06-11 | 2026-06-11 | commit 0b7a2ed; all 9 criteria pass; perf median <1ms vs 33ms budget |
 | 6 | Edit tools & trimming | completed | 2026-06-11 | 2026-06-11 | commit d11b866; all 9 criteria pass; 72-op undo storm deep-equal |
 | 7 | Sequence playback engine | completed | 2026-06-11 | 2026-06-11 | commit 0cba5d3; all 9 criteria pass; drift max 4ms; full WebCodecs path (rung 0) |
-| 8 | Transitions, titles, color, audio | in_progress | 2026-06-11 | — | WIP ef620f9: kernel transitions+fx+titleData green (144 tests); renderer/UI/E2E next |
+| 8 | Transitions, titles, color, audio | completed | 2026-06-11 | 2026-06-11 | commit c38aa8a; all 8 criteria pass; dissolve mid exact (A+B)/2 |
 | 9 | Export | pending | — | — | — |
 | 10 | Edit-by-transcript | pending | — | — | — |
 | 11 | Polish & Harden | pending | — | — | — |
@@ -26,16 +26,17 @@
 
 Updated by each phase as it runs. Cleared at the start of the next phase, so this always reflects the **most recent** engineering check.
 
-- Build: pass (phase 7)
-- Typecheck: pass (phase 7)
-- Lint: pass (phase 7)
-- Tests: pass (phase 7 — 134 unit, 7 E2E)
+- Build: pass (phase 8)
+- Typecheck: pass (phase 8)
+- Lint: pass (phase 8)
+- Tests: pass (phase 8 — 151 unit, 8 E2E)
 
 ## Notable events
 
 Append-only log of anything noteworthy that happened during execution (assumption corrected mid-run, retry, manual intervention, etc.). Each phase writes a line here.
 
-- 2026-06-11 — RUN PAUSED by user (usage limit) mid-phase-8 at WIP ef620f9. Phases 1-7 complete. DONE in 8: kernel transitions (afterClipId-attached — declared deviation from spec's editPointIndex, ripple-safe; ops addTransition/removeTransition/resizeTransition/setTransitionKind; clamp 2×min(handle); prune+clamp inside ops ok() after every edit; transitionAt(seq,t) → {kind, aClipId, bClipId, progress}); ClipFx += exposure/contrast/saturation/temperature/fadeInFlicks/fadeOutFlicks/volumeDb/pan (DEFAULT_FX updated); ConnectedClip.titleData (presets basic|lowerThird|bumper); zod schemas with defaults. REMAINING in 8 (plan in session tasks 8B-8D): (B) compositor transition GLSL program (dissolve mix / wipeL+R smoothstep 2px / fadeBlack via-black) drawing full-canvas quad sampling BOTH slot textures with per-rect UV; engine: per-item visible windows extended by transition half-widths (in/out), both-side decode at cuts (media formula mediaIn+(t-start) naturally yields handles), blend layer when transitionAt(t) active, also in renderStill; color uniforms (pipeline temp→exposure→contrast→saturation) in fragment shader; title layers = offscreen 2D canvas (2× supersample, wrap 80%) → texture via CompositedLayer.image, cache by titleData hash, bumper baked 0.5s fade via layer alpha. (C) audio-graph: gain ramps from pure fn gainAutomationFor() in src/renderer/playback/automation.ts + unit test (rising envelope), StereoPannerNode, volume dB→gain; UI: Ctrl+T = default 1s dissolve at edit point nearest playhead (store command), transition badge at cuts on canvas + right-click cycles kind, Del removes when selected(?); Browser Titles tab (3 presets, dblclick connects at playhead via connectAt+titleData, default 4s lane 1); Inspector tabs Video/Color/Audio/Title with Reset (all via setClipFx/setTitleData ops; setTitleData op NOT yet written). (D) e2e/effects.spec.ts: handles via trim (bars tail -2s, red head +2s, cut 8s); dissolve mid = |mid-(a+b)/2|<25/ch; wipeL p=0.5 left=B right=A; fadeBlack mid ≤20; title region readPixels diff-count; exposure +1 brightens bars gray center; saturation 0 → R≈G≈B±6 at a found-colorful px; inspector live; screenshots transition/title/inspector to .supergoal/evidence/phase-8/; 5 mandatory commands; VERIFY/DONE then phases 9-11.
+- 2026-06-11 — Phase 8 done (c38aa8a), resumed from WIP ef620f9. Declared deviations: transitions afterClipId-attached (ripple-safe vs spec editPointIndex); fade handles via Inspector fields (no timeline edge drags); transition resize op-only (no badge drag). wipeR shader factor was inverted — caught by pixel E2E. Effects pixel asserts use uniform-color fixtures for exact math.
+- 2026-06-11 — (superseded) RUN PAUSED by user (usage limit) mid-phase-8 at WIP ef620f9. Phases 1-7 complete. DONE in 8: kernel transitions (afterClipId-attached — declared deviation from spec's editPointIndex, ripple-safe; ops addTransition/removeTransition/resizeTransition/setTransitionKind; clamp 2×min(handle); prune+clamp inside ops ok() after every edit; transitionAt(seq,t) → {kind, aClipId, bClipId, progress}); ClipFx += exposure/contrast/saturation/temperature/fadeInFlicks/fadeOutFlicks/volumeDb/pan (DEFAULT_FX updated); ConnectedClip.titleData (presets basic|lowerThird|bumper); zod schemas with defaults. REMAINING in 8 (plan in session tasks 8B-8D): (B) compositor transition GLSL program (dissolve mix / wipeL+R smoothstep 2px / fadeBlack via-black) drawing full-canvas quad sampling BOTH slot textures with per-rect UV; engine: per-item visible windows extended by transition half-widths (in/out), both-side decode at cuts (media formula mediaIn+(t-start) naturally yields handles), blend layer when transitionAt(t) active, also in renderStill; color uniforms (pipeline temp→exposure→contrast→saturation) in fragment shader; title layers = offscreen 2D canvas (2× supersample, wrap 80%) → texture via CompositedLayer.image, cache by titleData hash, bumper baked 0.5s fade via layer alpha. (C) audio-graph: gain ramps from pure fn gainAutomationFor() in src/renderer/playback/automation.ts + unit test (rising envelope), StereoPannerNode, volume dB→gain; UI: Ctrl+T = default 1s dissolve at edit point nearest playhead (store command), transition badge at cuts on canvas + right-click cycles kind, Del removes when selected(?); Browser Titles tab (3 presets, dblclick connects at playhead via connectAt+titleData, default 4s lane 1); Inspector tabs Video/Color/Audio/Title with Reset (all via setClipFx/setTitleData ops; setTitleData op NOT yet written). (D) e2e/effects.spec.ts: handles via trim (bars tail -2s, red head +2s, cut 8s); dissolve mid = |mid-(a+b)/2|<25/ch; wipeL p=0.5 left=B right=A; fadeBlack mid ≤20; title region readPixels diff-count; exposure +1 brightens bars gray center; saturation 0 → R≈G≈B±6 at a found-colorful px; inspector live; screenshots transition/title/inspector to .supergoal/evidence/phase-8/; 5 mandatory commands; VERIFY/DONE then phases 9-11.
 - 2026-06-11 — Phase 7 done (0cba5d3) — THE RISK PHASE, shipped at full strength (rung 0: WebCodecs decode + WebGL2 composite + Web Audio clock; no fallback-ladder descent). Drift max 4ms over 37s. Proxies only for non-H.264 (green-prores fixture). Declared deviation: J key pauses instead of reverse-playing the sequence (reverse decode unsupported); source-clip viewer JKL unaffected. New fixture green-prores.mov added to make-fixtures.
 - 2026-06-11 — Phase 6 done (d11b866). Undo storm green first run (72 ops). Gotcha for future tests: full-source clips have zero roll/extend media headroom — target blade-cut boundaries. Edit menu accelerators swallow Ctrl+Z for real input; synthetic E2E input bypasses menu and hits the renderer registry instead (one undo either way).
 - 2026-06-11 — Phase 5 done (0b7a2ed). Electron fires no synthetic pointermove → timeline canvas uses mouse events + window-level drag capture; canvas-in-flex blowup fixed with absolute positioning; hit rects computed from state (stale-draw class bug); phase-3 browser.spec flake root-caused (grid reflow vs cached boundingBox) and fixed. zustand added (per phase spec).
