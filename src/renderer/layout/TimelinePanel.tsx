@@ -212,6 +212,11 @@ export function TimelinePanel(): ReactNode {
         combo: 'ctrl+b',
         description: 'Blade at the playhead (selected clips, or the clip under it)',
         handler: () => store().bladeAtPlayhead()
+      }),
+      registerShortcut('timeline-add-transition', {
+        combo: 'ctrl+t',
+        description: 'Add a 1 s cross dissolve at the edit point nearest the playhead',
+        handler: () => store().addTransitionAtPlayhead()
       })
     ]
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())

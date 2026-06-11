@@ -1,7 +1,8 @@
 import { create } from 'zustand'
-import { flicksPerFrame, type Rational } from '../../shared/timecode'
+import { FLICKS_PER_SECOND, flicksPerFrame, type Rational } from '../../shared/timecode'
 import { clipAtTime, sequenceDuration, type Sequence } from '../../shared/timeline/model'
 import {
+  addTransition,
   append,
   blade,
   connectAt,
@@ -12,12 +13,16 @@ import {
   rippleDelete,
   roll,
   setClipFx,
+  setTitleData,
+  setTransitionKind,
   slip,
   trimRipple,
   type ClipInput,
   type OpResult
 } from '../../shared/timeline/ops'
-import type { ClipFx } from '../../shared/timeline/model'
+import type { ClipFx, TitleData, TransitionKind } from '../../shared/timeline/model'
+import { transitionsOf } from '../../shared/timeline/transitions'
+import { TITLE_PRESETS } from '../titles/render'
 import {
   emptySelection,
   pruneSelection,
@@ -70,6 +75,12 @@ interface TimelineStore {
   isSequencePlaying: boolean
   setSequencePlaying(playing: boolean): void
   setFx(clipId: string, fx: ClipFx): void
+  setTitle(clipId: string, titleData: TitleData): void
+  /** Default 1 s dissolve at the edit point nearest the playhead (Ctrl+T). */
+  addTransitionAtPlayhead(): void
+  cycleTransitionKind(transitionId: string): void
+  /** Connect a title preset at the playhead on the lane above the spine. */
+  connectTitleAtPlayhead(preset: TitleData['preset']): void
   load(): Promise<void>
   applyOp(op: Op): OpResult | null
   bladeAt(clipId: string, timeFlicks: number): void
@@ -168,6 +179,63 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 
     setFx(clipId, fx) {
       apply((seq) => setClipFx(seq, { clipId, fx }))
+    },
+
+    setTitle(clipId, titleData) {
+      apply((seq) => setTitleData(seq, { clipId, titleData }))
+    },
+
+    addTransitionAtPlayhead() {
+      const { sequence, playheadFlicks } = get()
+      if (sequence === null || sequence.spine.length < 2) return
+      let best = -1
+      let bestDistance = Infinity
+      let position = 0
+      for (let i = 0; i < sequence.spine.length - 1; i++) {
+        position += sequence.spine[i].durationFlicks
+        const distance = Math.abs(position - playheadFlicks)
+        if (distance < bestDistance) {
+          bestDistance = distance
+          best = i
+        }
+      }
+      if (best === -1) return
+      apply((seq) =>
+        addTransition(seq, {
+          editPointIndex: best,
+          durationFlicks: FLICKS_PER_SECOND,
+          kind: 'dissolve'
+        })
+      )
+    },
+
+    cycleTransitionKind(transitionId) {
+      const sequence = get().sequence
+      if (sequence === null) return
+      const target = transitionsOf(sequence).find((t) => t.id === transitionId)
+      if (target === undefined) return
+      const kinds: TransitionKind[] = ['dissolve', 'wipeL', 'wipeR', 'fadeBlack']
+      const next = kinds[(kinds.indexOf(target.kind) + 1) % kinds.length]
+      apply((seq) => setTransitionKind(seq, { transitionId, kind: next }))
+    },
+
+    connectTitleAtPlayhead(preset) {
+      const { playheadFlicks } = get()
+      const titleData = TITLE_PRESETS[preset].make()
+      apply((seq) =>
+        connectAt(seq, {
+          clip: {
+            id: crypto.randomUUID(),
+            assetId: 'title',
+            mediaInFlicks: 0,
+            durationFlicks: 4 * FLICKS_PER_SECOND,
+            sourceDurationFlicks: 24 * 3600 * FLICKS_PER_SECOND
+          },
+          timeFlicks: playheadFlicks,
+          lane: 1,
+          titleData
+        })
+      )
     },
 
     bladeAt(clipId, timeFlicks) {
@@ -303,8 +371,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 
 // The engine reflects playback into the store regardless of which view is mounted.
 playbackEngine.onTime = (flicks) => useTimelineStore.getState().setPlayhead(flicks)
-playbackEngine.onPlayState = (playing) =>
-  useTimelineStore.getState().setSequencePlaying(playing)
+playbackEngine.onPlayState = (playing) => useTimelineStore.getState().setSequencePlaying(playing)
 
 /** Deterministic PRNG (mulberry32) so the undo-storm E2E is reproducible. */
 function mulberry32(seed: number): () => number {

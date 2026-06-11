@@ -5,6 +5,7 @@ import type {
   ConnectedClip,
   Sequence,
   SpineItem,
+  TitleData,
   Transition,
   TransitionKind
 } from './model'
@@ -255,7 +256,7 @@ export function overwriteAt(
 
 export function connectAt(
   seq: Sequence,
-  args: { clip: ClipInput; timeFlicks: number; lane?: number }
+  args: { clip: ClipInput; timeFlicks: number; lane?: number; titleData?: TitleData }
 ): OpResult {
   const error = validateClipInput(seq, args.clip)
   if (error) return fail(seq, error.code, error.message)
@@ -276,6 +277,7 @@ export function connectAt(
     durationFlicks: args.clip.durationFlicks,
     sourceDurationFlicks: args.clip.sourceDurationFlicks
   }
+  if (args.titleData !== undefined) cc.titleData = args.titleData
   return ok(seq, seq.spine, [...seq.connected, cc])
 }
 
@@ -448,6 +450,18 @@ export function setClipFx(seq: Sequence, args: { clipId: string; fx: ClipFx }): 
   if (connectedIndex === -1) return fail(seq, 'unknown-id', `no clip "${args.clipId}"`)
   const connected = [...seq.connected]
   connected[connectedIndex] = { ...connected[connectedIndex], fx: args.fx }
+  return ok(seq, seq.spine, connected)
+}
+
+/** Update a connected title's text payload (undoable). */
+export function setTitleData(
+  seq: Sequence,
+  args: { clipId: string; titleData: TitleData }
+): OpResult {
+  const index = seq.connected.findIndex((cc) => cc.id === args.clipId)
+  if (index === -1) return fail(seq, 'unknown-id', `no connected clip "${args.clipId}"`)
+  const connected = [...seq.connected]
+  connected[index] = { ...connected[index], titleData: args.titleData }
   return ok(seq, seq.spine, connected)
 }
 

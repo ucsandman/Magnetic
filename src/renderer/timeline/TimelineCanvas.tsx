@@ -25,6 +25,7 @@ import {
   pxToFlicks,
   rowLayout,
   timeToX,
+  transitionBadgeRects,
   xToTime,
   type ClipRect,
   type DragGhost,
@@ -539,6 +540,20 @@ export function TimelineCanvas(): ReactNode {
     }
   }
 
+  /** Right-click on a transition badge cycles its kind. */
+  const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    const state = buildRenderState()
+    if (state === null) return
+    const { x, y } = localPoint(event)
+    for (const badge of transitionBadgeRects(state)) {
+      if (x >= badge.x && x <= badge.x + badge.w && y >= badge.y && y <= badge.y + badge.h) {
+        event.preventDefault()
+        useTimelineStore.getState().cycleTransitionKind(badge.transitionId)
+        return
+      }
+    }
+  }
+
   const onWheel = (event: WheelEvent<HTMLDivElement>): void => {
     const store = useTimelineStore.getState()
     if (event.ctrlKey) {
@@ -606,6 +621,7 @@ export function TimelineCanvas(): ReactNode {
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
+      onContextMenu={onContextMenu}
       onWheel={onWheel}
       onDragOver={onDragOver}
       onDrop={onDrop}

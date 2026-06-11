@@ -1,6 +1,7 @@
 import { FLICKS_PER_SECOND, flicksToTimecode } from '../../shared/timecode'
 import type { Sequence } from '../../shared/timeline/model'
 import { spineStartIndex } from '../../shared/timeline/magnetic'
+import { editPointIndexOfCut, transitionsOf } from '../../shared/timeline/transitions'
 import type { Selection } from '../../shared/timeline/select'
 import type { LibrarySnapshot } from '../../shared/types'
 import { peaksFor, stripImageFor } from './media-cache'
@@ -360,6 +361,63 @@ export function computeClipRects(state: RenderState): ClipRect[] {
   return rects
 }
 
+export interface TransitionBadgeRect {
+  transitionId: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** Badge rects spanning each transition's overlap window at its cut. */
+export function transitionBadgeRects(state: RenderState): TransitionBadgeRect[] {
+  const layout = rowLayout(state.sequence)
+  const startOf = spineStartIndex(state.sequence.spine)
+  const rects: TransitionBadgeRect[] = []
+  for (const transition of transitionsOf(state.sequence)) {
+    const index = editPointIndexOfCut(state.sequence, transition.afterClipId)
+    if (index === -1) continue
+    const left = state.sequence.spine[index]
+    const cut = (startOf.get(left.id) ?? 0) + left.durationFlicks
+    const half = transition.durationFlicks / 2
+    const x = timeToX(state, cut - half)
+    const w = Math.max(10, timeToX(state, cut + half) - x)
+    rects.push({ transitionId: transition.id, x, y: layout.spineY + 2, w, h: 14 })
+  }
+  return rects
+}
+
+const KIND_LABEL: Record<string, string> = {
+  dissolve: 'X',
+  wipeL: 'W◀',
+  wipeR: 'W▶',
+  fadeBlack: 'F'
+}
+
+function drawTransitionBadges(ctx: CanvasRenderingContext2D, state: RenderState): void {
+  const badges = transitionBadgeRects(state)
+  if (badges.length === 0) return
+  const kinds = new Map(transitionsOf(state.sequence).map((t) => [t.id, t.kind]))
+  for (const badge of badges) {
+    roundedRectPath(ctx, badge.x, badge.y, badge.w, badge.h, 3)
+    ctx.fillStyle = '#1d1d20dd'
+    ctx.fill()
+    ctx.strokeStyle = COLORS.selection
+    ctx.lineWidth = 1
+    ctx.stroke()
+    ctx.fillStyle = COLORS.selection
+    ctx.font = '9px system-ui, sans-serif'
+    ctx.textBaseline = 'middle'
+    ctx.textAlign = 'center'
+    ctx.fillText(
+      KIND_LABEL[kinds.get(badge.transitionId) ?? 'dissolve'],
+      badge.x + badge.w / 2,
+      badge.y + badge.h / 2 + 1
+    )
+    ctx.textAlign = 'left'
+  }
+}
+
 /** Full draw pass. Returns the hit rects of everything painted. */
 export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState): ClipRect[] {
   const layout = rowLayout(state.sequence)
@@ -401,6 +459,8 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
   for (const rect of rects) {
     if (state.selection.clipIds.includes(rect.id)) drawSelection(ctx, rect)
   }
+
+  drawTransitionBadges(ctx, state)
 
   // hovered trim edge / edit point: yellow bracket affordance
   if (state.hoverEdge !== null && state.ghost === null) {

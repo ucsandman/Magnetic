@@ -645,3 +645,12 @@ button.active {
   padding: 0 4px;
   font-size: 9px;
 }
+
+.inspector-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.sidebar-titles-header {
+  margin-top: 14px;
+}

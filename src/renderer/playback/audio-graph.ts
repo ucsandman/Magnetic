@@ -1,6 +1,8 @@
 import { flicksToSeconds } from '../../shared/timecode'
 import { spineStartIndex } from '../../shared/timeline/magnetic'
-import type { Sequence } from '../../shared/timeline/model'
+import type { ClipFx, Sequence } from '../../shared/timeline/model'
+import { DEFAULT_FX } from '../../shared/timeline/ops'
+import { gainAutomationFor } from './automation'
 
 /**
  * Web Audio mixdown: one BufferSource per clip with audio, scheduled at clip
@@ -55,7 +57,14 @@ export class AudioGraphController {
     this.stop()
     const fromSec = flicksToSeconds(fromFlicks)
     const startOf = spineStartIndex(sequence.spine)
-    const jobs: { assetId: string; clipStartSec: number; mediaInSec: number; durSec: number }[] = []
+    interface AudioJob {
+      assetId: string
+      clipStartSec: number
+      mediaInSec: number
+      durSec: number
+      fx: ClipFx
+    }
+    const jobs: AudioJob[] = []
     let position = 0
     for (const item of sequence.spine) {
       if (item.kind === 'clip') {
@@ -63,19 +72,22 @@ export class AudioGraphController {
           assetId: item.assetId,
           clipStartSec: flicksToSeconds(position),
           mediaInSec: flicksToSeconds(item.mediaInFlicks),
-          durSec: flicksToSeconds(item.durationFlicks)
+          durSec: flicksToSeconds(item.durationFlicks),
+          fx: { ...DEFAULT_FX, ...(item.fx ?? {}) }
         })
       }
       position += item.durationFlicks
     }
     for (const cc of sequence.connected) {
+      if (cc.titleData !== undefined) continue // titles are silent
       const parentStart = startOf.get(cc.parentClipId)
       if (parentStart === undefined) continue
       jobs.push({
         assetId: cc.assetId,
         clipStartSec: flicksToSeconds(parentStart + cc.offsetFlicks),
         mediaInSec: flicksToSeconds(cc.mediaInFlicks),
-        durSec: flicksToSeconds(cc.durationFlicks)
+        durSec: flicksToSeconds(cc.durationFlicks),
+        fx: { ...DEFAULT_FX, ...(cc.fx ?? {}) }
       })
     }
     const buffers = await Promise.all(jobs.map((job) => this.bufferFor(job.assetId)))
@@ -89,8 +101,24 @@ export class AudioGraphController {
       const source = this.ctx.createBufferSource()
       source.buffer = buffer
       const gain = this.ctx.createGain()
+      const panner = this.ctx.createStereoPanner()
+      panner.pan.value = Math.max(-1, Math.min(1, job.fx.pan))
       source.connect(gain)
-      gain.connect(this.master)
+      gain.connect(panner)
+      panner.connect(this.master)
+      // fade envelope is relative to the CLIP; past anchors clamp to "now"
+      const clipStartCtx = startCtxTime + (job.clipStartSec - fromSec)
+      const points = gainAutomationFor({
+        startCtxTime: clipStartCtx,
+        durationSec: job.durSec,
+        fadeInSec: flicksToSeconds(job.fx.fadeInFlicks),
+        fadeOutSec: flicksToSeconds(job.fx.fadeOutFlicks),
+        volumeDb: job.fx.volumeDb
+      })
+      gain.gain.setValueAtTime(points[0].value, Math.max(0, points[0].atCtxTime))
+      for (const point of points.slice(1)) {
+        gain.gain.linearRampToValueAtTime(point.value, Math.max(0, point.atCtxTime))
+      }
       source.start(
         startCtxTime + Math.max(0, job.clipStartSec - fromSec),
         job.mediaInSec + intoClip,

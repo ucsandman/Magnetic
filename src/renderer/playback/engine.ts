@@ -1,7 +1,15 @@
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import { spineStartIndex } from '../../shared/timeline/magnetic'
-import { sequenceDuration, type ClipFx, type Sequence } from '../../shared/timeline/model'
+import {
+  sequenceDuration,
+  type ClipFx,
+  type Sequence,
+  type TitleData
+} from '../../shared/timeline/model'
+import { DEFAULT_FX } from '../../shared/timeline/ops'
+import { transitionAt, transitionsOf, editPointIndexOfCut } from '../../shared/timeline/transitions'
 import type { AssetView, LibrarySnapshot } from '../../shared/types'
+import { renderTitle } from '../titles/render'
 import { AudioGraphController } from './audio-graph'
 import { Compositor, type CompositedLayer } from './compositor/compositor'
 import type { DecoderHandle } from './decoder/sample-decoder'
@@ -18,7 +26,8 @@ const PRE_ROLL_SEC = 0.5
 
 interface PlayItem {
   clipId: string
-  asset: AssetView
+  /** null for titles (no media asset). */
+  asset: AssetView | null
   /** Sequence-space interval, seconds. */
   startSec: number
   endSec: number
@@ -26,6 +35,10 @@ interface PlayItem {
   fx: ClipFx | undefined
   /** 0 = spine; >0 connected video lanes, painted ascending. */
   layer: number
+  titleData?: TitleData
+  /** Transition half-widths extending this item's visible window. */
+  inHalfSec: number
+  outHalfSec: number
 }
 
 interface DriftSample {
@@ -160,14 +173,26 @@ export class PlaybackEngine {
     return [...this.compositor.readPixels(x, y, w, h)]
   }
 
-  /** Visible video items (spine layer 0, connected lanes ascending). */
+  /** Visible video/title items (spine layer 0, connected lanes ascending). */
   private buildItems(sequence: Sequence, snapshot: LibrarySnapshot): PlayItem[] {
     const items: PlayItem[] = []
+    // transition half-widths per spine clip: at the cut before it (in) and after it (out)
+    const halves = new Map<string, { inHalf: number; outHalf: number }>()
+    for (const transition of transitionsOf(sequence)) {
+      const index = editPointIndexOfCut(sequence, transition.afterClipId)
+      if (index === -1) continue
+      const half = transition.durationFlicks / 2 / FLICKS_PER_SECOND
+      const left = sequence.spine[index]
+      const right = sequence.spine[index + 1]
+      halves.set(left.id, { ...(halves.get(left.id) ?? { inHalf: 0, outHalf: 0 }), outHalf: half })
+      halves.set(right.id, { ...(halves.get(right.id) ?? { inHalf: 0, outHalf: 0 }), inHalf: half })
+    }
     let position = 0
     for (const item of sequence.spine) {
       if (item.kind === 'clip') {
         const asset = snapshot.assets[item.assetId]
         if (asset?.video !== undefined) {
+          const half = halves.get(item.id) ?? { inHalf: 0, outHalf: 0 }
           items.push({
             clipId: item.id,
             asset,
@@ -175,7 +200,9 @@ export class PlaybackEngine {
             endSec: (position + item.durationFlicks) / FLICKS_PER_SECOND,
             mediaInSec: item.mediaInFlicks / FLICKS_PER_SECOND,
             fx: item.fx,
-            layer: 0
+            layer: 0,
+            inHalfSec: half.inHalf,
+            outHalfSec: half.outHalf
           })
         }
       }
@@ -186,28 +213,64 @@ export class PlaybackEngine {
       if (cc.lane <= 0) continue
       const parentStart = startOf.get(cc.parentClipId)
       if (parentStart === undefined) continue
+      const isTitle = cc.titleData !== undefined
       const asset = snapshot.assets[cc.assetId]
-      if (asset?.video === undefined) continue
+      if (!isTitle && asset?.video === undefined) continue
       const start = parentStart + cc.offsetFlicks
       items.push({
         clipId: cc.id,
-        asset,
+        asset: isTitle ? null : asset,
         startSec: start / FLICKS_PER_SECOND,
         endSec: (start + cc.durationFlicks) / FLICKS_PER_SECOND,
         mediaInSec: cc.mediaInFlicks / FLICKS_PER_SECOND,
         fx: cc.fx,
-        layer: cc.lane
+        layer: cc.lane,
+        titleData: cc.titleData,
+        inHalfSec: 0,
+        outHalfSec: 0
       })
     }
     items.sort((a, b) => a.layer - b.layer)
     return items
   }
 
+  private titleCache = new Map<
+    string,
+    { hash: string; canvas: HTMLCanvasElement; uploadedHash: string | null }
+  >()
+
+  /** Title layer with cached canvas texture; bumper presets bake a 0.5 s fade. */
+  private titleLayer(item: PlayItem, tSec: number): CompositedLayer {
+    const titleData = item.titleData!
+    const hash = JSON.stringify(titleData)
+    let entry = this.titleCache.get(item.clipId)
+    if (entry === undefined || entry.hash !== hash) {
+      entry = { hash, canvas: renderTitle(titleData), uploadedHash: null }
+      this.titleCache.set(item.clipId, entry)
+    }
+    const baseFx = { ...DEFAULT_FX, ...(item.fx ?? {}) }
+    let fade = 1
+    if (titleData.preset === 'bumper') {
+      fade = Math.max(0, Math.min(1, (tSec - item.startSec) / 0.5, (item.endSec - tSec) / 0.5))
+    }
+    const layer: CompositedLayer = {
+      slot: item.clipId,
+      frame: null,
+      fx: { ...baseFx, opacity: baseFx.opacity * fade },
+      image: entry.uploadedHash === hash ? undefined : entry.canvas
+    }
+    entry.uploadedHash = hash
+    return layer
+  }
+
+  private sequence: Sequence | null = null
+
   async play(sequence: Sequence, snapshot: LibrarySnapshot, fromFlicks: number): Promise<void> {
     this.pause()
     this.stillToken += 1
     const audio = this.ensureAudio()
     if (audio.ctx.state === 'suspended') await audio.ctx.resume()
+    this.sequence = sequence
     this.items = this.buildItems(sequence, snapshot)
     this.fromSec = fromFlicks / FLICKS_PER_SECOND
     this.endSec = sequenceDuration(sequence) / FLICKS_PER_SECOND
@@ -236,12 +299,18 @@ export class PlaybackEngine {
     }
     const effectiveT = Math.max(tSec, this.fromSec)
 
-    // start/stop pumps: pre-roll ahead of each clip's cut, evict behind
+    // start/stop pumps: pre-roll ahead of each clip's (possibly extended) window
     for (const item of this.items) {
-      const active = effectiveT >= item.startSec - PRE_ROLL_SEC && effectiveT < item.endSec
+      if (item.titleData !== undefined || item.asset === null) continue
+      const visibleFrom = item.startSec - item.inHalfSec
+      const visibleTo = item.endSec + item.outHalfSec
+      const active = effectiveT >= visibleFrom - PRE_ROLL_SEC && effectiveT < visibleTo
       const pump = this.pumps.get(item.clipId)
       if (active && pump === undefined) {
-        const startMediaSec = item.mediaInSec + Math.max(0, effectiveT - item.startSec)
+        const startMediaSec = Math.max(
+          0,
+          item.mediaInSec + (Math.max(effectiveT, visibleFrom) - item.startSec)
+        )
         const newPump = new ClipPump(item, sessionFor(item.asset))
         newPump.start(startMediaSec)
         this.pumps.set(item.clipId, newPump)
@@ -251,19 +320,52 @@ export class PlaybackEngine {
       }
     }
 
-    // present due frames for visible items
-    const layers: CompositedLayer[] = []
+    // present due frames for visible items (windows extended by transitions)
+    const activeTransition =
+      this.sequence === null ? null : transitionAt(this.sequence, effectiveT * FLICKS_PER_SECOND)
+    const visibleItems = this.items.filter(
+      (item) =>
+        effectiveT >= item.startSec - item.inHalfSec && effectiveT < item.endSec + item.outHalfSec
+    )
+    const dueBySlot = new Map<string, VideoFrame | null>()
     let spinePresentedSeqSec: number | null = null
-    for (const item of this.items) {
-      if (effectiveT < item.startSec || effectiveT >= item.endSec) continue
+    for (const item of visibleItems) {
+      if (item.titleData !== undefined) continue
       const pump = this.pumps.get(item.clipId)
       if (pump === undefined) continue
       const mediaMicros = (item.mediaInSec + (effectiveT - item.startSec)) * 1_000_000
-      const frame = pump.takeDueFrame(mediaMicros)
-      layers.push({ slot: item.clipId, frame, fx: item.fx })
-      if (item.layer === 0 && pump.presentedPtsMicros >= 0) {
+      dueBySlot.set(item.clipId, pump.takeDueFrame(mediaMicros))
+      const isDriftAnchor =
+        item.layer === 0 && (activeTransition === null || item.clipId === activeTransition.aClipId)
+      if (isDriftAnchor && pump.presentedPtsMicros >= 0) {
         spinePresentedSeqSec = item.startSec + pump.presentedPtsMicros / 1_000_000 - item.mediaInSec
       }
+    }
+    const layers: CompositedLayer[] = []
+    for (const item of visibleItems) {
+      if (item.titleData !== undefined) {
+        layers.push(this.titleLayer(item, effectiveT))
+        continue
+      }
+      if (!dueBySlot.has(item.clipId)) continue
+      if (activeTransition !== null && item.layer === 0) {
+        if (item.clipId === activeTransition.bClipId) continue // folded into the blend
+        if (item.clipId === activeTransition.aClipId) {
+          layers.push({
+            slot: item.clipId,
+            frame: dueBySlot.get(item.clipId)!,
+            fx: item.fx,
+            blend: {
+              slotB: activeTransition.bClipId,
+              frameB: dueBySlot.get(activeTransition.bClipId) ?? null,
+              progress: activeTransition.progress,
+              kind: activeTransition.kind
+            }
+          })
+          continue
+        }
+      }
+      layers.push({ slot: item.clipId, frame: dueBySlot.get(item.clipId)!, fx: item.fx })
     }
     this.compositor.draw(layers)
 
@@ -303,14 +405,19 @@ export class PlaybackEngine {
     const token = ++this.stillToken
     const tSec = timeFlicks / FLICKS_PER_SECOND
     const items = this.buildItems(sequence, snapshot).filter(
-      (item) => tSec >= item.startSec && tSec < item.endSec
+      (item) => tSec >= item.startSec - item.inHalfSec && tSec < item.endSec + item.outHalfSec
     )
-    const layers: CompositedLayer[] = []
+    const activeTransition = transitionAt(sequence, timeFlicks)
+    const frames = new Map<string, VideoFrame | null>()
     for (const item of items) {
+      if (item.titleData !== undefined || item.asset === null) continue
       try {
         const handle = await sessionFor(item.asset)
         if (token !== this.stillToken) return // superseded by a newer seek/play
-        const mediaFlicks = (item.mediaInSec + (tSec - item.startSec)) * FLICKS_PER_SECOND
+        const mediaFlicks = Math.max(
+          0,
+          (item.mediaInSec + (tSec - item.startSec)) * FLICKS_PER_SECOND
+        )
         const generator = handle.decodeRange(mediaFlicks, 1)
         const first = await generator.next()
         await generator.return(undefined)
@@ -318,19 +425,44 @@ export class PlaybackEngine {
           if (first.done !== true) (first.value as VideoFrame).close()
           return
         }
-        layers.push({
-          slot: item.clipId,
-          frame: first.done === true ? null : first.value,
-          fx: item.fx
-        })
+        frames.set(item.clipId, first.done === true ? null : first.value)
       } catch {
-        layers.push({ slot: item.clipId, frame: null, fx: item.fx }) // decode failure: keep last texture
+        frames.set(item.clipId, null) // decode failure: keep last texture
       }
+    }
+    const layers: CompositedLayer[] = []
+    for (const item of items) {
+      if (item.titleData !== undefined) {
+        layers.push(this.titleLayer(item, tSec))
+        continue
+      }
+      if (!frames.has(item.clipId)) continue
+      if (activeTransition !== null && item.layer === 0) {
+        if (item.clipId === activeTransition.bClipId) continue
+        if (item.clipId === activeTransition.aClipId) {
+          layers.push({
+            slot: item.clipId,
+            frame: frames.get(item.clipId)!,
+            fx: item.fx,
+            blend: {
+              slotB: activeTransition.bClipId,
+              frameB: frames.get(activeTransition.bClipId) ?? null,
+              progress: activeTransition.progress,
+              kind: activeTransition.kind
+            }
+          })
+          continue
+        }
+      }
+      layers.push({ slot: item.clipId, frame: frames.get(item.clipId)!, fx: item.fx })
     }
     if (token === this.stillToken && this.compositor !== null) {
       this.compositor.draw(layers)
     } else {
-      for (const layer of layers) layer.frame?.close()
+      for (const layer of layers) {
+        layer.frame?.close()
+        layer.blend?.frameB?.close()
+      }
     }
   }
 }
