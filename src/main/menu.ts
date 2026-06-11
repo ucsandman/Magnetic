@@ -1,10 +1,22 @@
 import { app, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 
-export function buildAppMenu(): void {
+export interface MenuActions {
+  onImportMedia(): void
+}
+
+export function buildAppMenu(actions: MenuActions): void {
   const template: MenuItemConstructorOptions[] = [
     {
       label: 'File',
-      submenu: [{ role: 'quit', label: 'Exit Magnetic' }]
+      submenu: [
+        {
+          label: 'Import Media…',
+          accelerator: 'CmdOrCtrl+I',
+          click: () => actions.onImportMedia()
+        },
+        { type: 'separator' },
+        { role: 'quit', label: 'Exit Magnetic' }
+      ]
     },
     {
       label: 'Edit',

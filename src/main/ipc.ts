@@ -2,7 +2,14 @@ import { ipcMain } from 'electron'
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
 import { z } from 'zod'
-import { IPC, type BinaryProbeResult, type DiagBinariesResult } from '../shared/ipc'
+import {
+  importPathsPayloadSchema,
+  setRatingPayloadSchema,
+  type BinaryProbeResult,
+  type DiagBinariesResult
+} from '../shared/ipc'
+import { IPC } from '../shared/channels'
+import type { ImportResult, LibrarySnapshot } from '../shared/types'
 import { ffprobePath, whisperPath } from './binaries'
 
 /**
@@ -54,6 +61,36 @@ async function diagBinaries(): Promise<DiagBinariesResult> {
   return { ffprobe, whisper }
 }
 
-export function registerIpc(): void {
+export interface IpcDeps {
+  getSnapshot(): LibrarySnapshot
+  importPaths(paths: string[]): Promise<ImportResult>
+  importDialog(): Promise<ImportResult>
+  setRating(assetId: string, rating: 'none' | 'favorite' | 'rejected'): void
+}
+
+export function isTestMode(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.MAGNETIC_TEST === '1'
+}
+
+export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env): void {
   handleValidated(IPC.diagBinaries, z.undefined(), () => diagBinaries())
+
+  handleValidated(IPC.libraryGet, z.undefined(), async () => deps.getSnapshot())
+
+  handleValidated(IPC.libraryImportPaths, importPathsPayloadSchema, async (payload) =>
+    deps.importPaths(payload.paths)
+  )
+
+  handleValidated(IPC.libraryImportDialog, z.undefined(), async () => deps.importDialog())
+
+  handleValidated(IPC.assetSetRating, setRatingPayloadSchema, async (payload) => {
+    deps.setRating(payload.assetId, payload.rating)
+  })
+
+  // Test-only surface — never registered outside MAGNETIC_TEST=1.
+  if (isTestMode(env)) {
+    handleValidated(IPC.testImportPaths, importPathsPayloadSchema, async (payload) =>
+      deps.importPaths(payload.paths)
+    )
+  }
 }

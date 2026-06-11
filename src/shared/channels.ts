@@ -5,5 +5,13 @@
  * payload with the zod schemas in ipc.ts.
  */
 export const IPC = {
-  diagBinaries: 'diag:binaries'
+  diagBinaries: 'diag:binaries',
+  libraryGet: 'library:get',
+  libraryImportPaths: 'library:importPaths',
+  libraryImportDialog: 'library:importDialog',
+  assetSetRating: 'asset:setRating',
+  /** main -> renderer push: full library snapshot after any change */
+  libraryChanged: 'library:changed',
+  /** Registered only when MAGNETIC_TEST=1 (see ipc.ts registerIpc). */
+  testImportPaths: 'test:importPaths'
 } as const

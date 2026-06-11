@@ -4,6 +4,16 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
 import { buildAppMenu } from './menu'
+import { registerMfileScheme, installMfileHandler } from './protocol'
+import {
+  buildSnapshot,
+  getStore,
+  importAndProcess,
+  importViaDialog,
+  initAppState
+} from './app-state'
+
+registerMfileScheme()
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -46,13 +56,28 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  registerIpc()
-  buildAppMenu()
+  initAppState()
+  installMfileHandler(() => [getStore().root])
+  registerIpc({
+    getSnapshot: () => buildSnapshot(),
+    importPaths: (paths) => importAndProcess(paths),
+    importDialog: () => importViaDialog(),
+    setRating: (assetId, rating) => getStore().setRating(assetId, rating)
+  })
+  buildAppMenu({ onImportMedia: () => void importViaDialog() })
   createWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', () => {
+  try {
+    getStore().saveNow()
+  } catch {
+    // library never initialized — nothing to save
+  }
 })
 
 app.on('window-all-closed', () => {

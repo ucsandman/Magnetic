@@ -1,11 +1,16 @@
 import { _electron as electron, expect, test } from '@playwright/test'
-import { mkdirSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 
 const ROOT = join(__dirname, '..')
 
 test('Magnetic boots a dark 3-panel shell with secure renderer and healthy binaries', async () => {
-  const app = await electron.launch({ args: [join(ROOT, 'out', 'main', 'index.js')] })
+  const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-smoke-'))
+  const app = await electron.launch({
+    args: [join(ROOT, 'out', 'main', 'index.js')],
+    env: { ...process.env, MAGNETIC_LIBRARY_PATH: join(tempRoot, 'Smoke.mglib') }
+  })
   const page = await app.firstWindow()
 
   await expect(page).toHaveTitle('Magnetic')
@@ -44,4 +49,5 @@ test('Magnetic boots a dark 3-panel shell with secure renderer and healthy binar
   await expect(page.getByTestId('panel-inspector')).toBeVisible()
 
   await app.close()
+  rmSync(tempRoot, { recursive: true, force: true })
 })

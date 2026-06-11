@@ -1,7 +1,7 @@
 # State: Magnetic — FCP-style NLE for Windows
 
-**Status:** READY_TO_DISPATCH
-**Current phase:** 1
+**Status:** RUNNING
+**Current phase:** 2
 **Started:** 2026-06-11
 **Last update:** 2026-06-11
 **Baseline ref:** 26c22d9756e5f73e5266fb728e7a5252479870b2    <!-- HEAD sha captured at Stage 7 dispatch; the audit + cleanliness checks compare the COMPLETE working tree (committed + staged + unstaged + untracked) against it via repo-state.sh -->
@@ -10,7 +10,7 @@
 
 | # | Phase | Status | Started | Completed | Notes |
 |---|-------|--------|---------|-----------|-------|
-| 1 | Scaffold shell & binaries | pending | — | — | — |
+| 1 | Scaffold shell & binaries | completed | 2026-06-11 | 2026-06-11 | commit aee7c7f; all 8 criteria pass |
 | 2 | Library, import & browser | pending | — | — | — |
 | 3 | Viewer & source playback | pending | — | — | — |
 | 4 | Magnetic timeline kernel | pending | — | — | — |
@@ -26,10 +26,10 @@
 
 Updated by each phase as it runs. Cleared at the start of the next phase, so this always reflects the **most recent** engineering check.
 
-- Build: —
-- Typecheck: —
-- Lint: —
-- Tests: —
+- Build: pass (phase 1)
+- Typecheck: pass (phase 1)
+- Lint: pass (phase 1)
+- Tests: pass (phase 1 — 6 unit, 1 E2E)
 
 ## Notable events
 
@@ -38,6 +38,7 @@ Append-only log of anything noteworthy that happened during execution (assumptio
 - 2026-06-11 — Plan drafted, 11 phases. Scope: signature replica + edit-by-transcript (user-approved tier).
 - 2026-06-11 — Pre-flight green (env-level): node v24.15.0, npm 10.9.0, git 2.52.0. npm-script baseline deferred to phase 1 by design (greenfield).
 - 2026-06-11 — Dispatch ready. Baseline 26c22d9; PROTOCOL.md + repo-state.sh in place; all 11 specs validated.
+- 2026-06-11 — Phase 1 done (aee7c7f). Pins: ffmpeg 8.1.1 gyan essentials, whisper.cpp v1.8.6 bin-x64 (whisper-cli.exe), ggml-base.en. Fixes en route: zod kept out of sandboxed preload (electron-vite externalizes deps); System32 bsdtar for zip extraction; bin dir resolved via __dirname not app.getAppPath().
 
 ## Failure log
 
