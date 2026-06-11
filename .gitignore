@@ -6,4 +6,7 @@ fixtures/
 playwright-report/
 test-results/
 .dashclaw-local/
+.DS_Store
+.eslintcache
 *.log
+*.log.*
