@@ -581,3 +581,67 @@ button.active {
   gap: 2px;
   margin-left: 10px;
 }
+
+/* ---- Sequence playback (phase 7) ---- */
+.sequence-canvas {
+  max-width: 95%;
+  max-height: 90%;
+  width: auto;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--color-border);
+}
+
+.viewer-mode-badge {
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 9px;
+  text-transform: lowercase;
+}
+
+.inspector-video {
+  align-self: stretch;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inspector-section {
+  font-size: var(--font-size-small);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-dim);
+  margin-bottom: 4px;
+}
+
+.fx-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-small);
+}
+
+.fx-field input {
+  width: 80px;
+  background: var(--color-app-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text);
+  padding: 3px 6px;
+  font-size: var(--font-size-small);
+}
+
+.asset-proxy-badge {
+  background: #5e3a8c;
+  color: #fff;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-size: 9px;
+}

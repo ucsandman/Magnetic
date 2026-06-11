@@ -12,6 +12,9 @@ const api: MagneticApi = {
   getProject: () => ipcRenderer.invoke(IPC.projectGet),
   saveSequence: (projectId, sequence) =>
     ipcRenderer.invoke(IPC.projectSaveSequence, { projectId, sequence }),
+  ensurePcm: (assetId) => ipcRenderer.invoke(IPC.mediaEnsurePcm, { assetId }),
+  ensureProxy: (assetId) => ipcRenderer.invoke(IPC.mediaEnsureProxy, { assetId }),
+  diagMemory: () => ipcRenderer.invoke(IPC.diagMemory),
   onLibraryChanged: (cb) => {
     const listener = (_event: unknown, snapshot: LibrarySnapshot): void => cb(snapshot)
     ipcRenderer.on(IPC.libraryChanged, listener)

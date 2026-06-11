@@ -11,11 +11,13 @@ import {
   overwriteAt,
   rippleDelete,
   roll,
+  setClipFx,
   slip,
   trimRipple,
   type ClipInput,
   type OpResult
 } from '../../shared/timeline/ops'
+import type { ClipFx } from '../../shared/timeline/model'
 import {
   emptySelection,
   pruneSelection,
@@ -24,6 +26,7 @@ import {
   type Selection
 } from '../../shared/timeline/select'
 import { UndoStack, type Op } from '../../shared/timeline/undo'
+import { playbackEngine } from '../playback/engine'
 import { measureDraws } from '../timeline/perf'
 
 /**
@@ -61,6 +64,12 @@ interface TimelineStore {
   skimming: boolean
   tool: Tool
   setTool(tool: Tool): void
+  /** What the single viewer shows: a source clip or the sequence (phase 7). */
+  viewerMode: 'source' | 'sequence'
+  setViewerMode(mode: 'source' | 'sequence'): void
+  isSequencePlaying: boolean
+  setSequencePlaying(playing: boolean): void
+  setFx(clipId: string, fx: ClipFx): void
   load(): Promise<void>
   applyOp(op: Op): OpResult | null
   bladeAt(clipId: string, timeFlicks: number): void
@@ -142,9 +151,23 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
     snapping: true,
     skimming: true,
     tool: 'select',
+    viewerMode: 'source',
+    isSequencePlaying: false,
 
     setTool(tool) {
       set({ tool })
+    },
+
+    setViewerMode(viewerMode) {
+      set({ viewerMode })
+    },
+
+    setSequencePlaying(isSequencePlaying) {
+      set({ isSequencePlaying })
+    },
+
+    setFx(clipId, fx) {
+      apply((seq) => setClipFx(seq, { clipId, fx }))
     },
 
     bladeAt(clipId, timeFlicks) {
@@ -278,6 +301,11 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
   }
 })
 
+// The engine reflects playback into the store regardless of which view is mounted.
+playbackEngine.onTime = (flicks) => useTimelineStore.getState().setPlayhead(flicks)
+playbackEngine.onPlayState = (playing) =>
+  useTimelineStore.getState().setSequencePlaying(playing)
+
 /** Deterministic PRNG (mulberry32) so the undo-storm E2E is reproducible. */
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0
@@ -350,6 +378,13 @@ export function installTimelineTestHooks(): void {
     },
     measureDraws: (n: number) => measureDraws(n),
     applyRandomOps,
+    playback: {
+      readPixels: (x: number, y: number, w: number, h: number) =>
+        playbackEngine.readPixels(x, y, w, h),
+      drift: () => playbackEngine.driftReport(),
+      rms: () => playbackEngine.audioRms(),
+      isPlaying: () => playbackEngine.isPlaying
+    },
     undoTimes(count: number): number {
       const store = useTimelineStore.getState()
       let undone = 0

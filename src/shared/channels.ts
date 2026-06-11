@@ -12,6 +12,9 @@ export const IPC = {
   assetSetRating: 'asset:setRating',
   projectGet: 'project:get',
   projectSaveSequence: 'project:saveSequence',
+  mediaEnsurePcm: 'media:ensurePcm',
+  mediaEnsureProxy: 'media:ensureProxy',
+  diagMemory: 'diag:memory',
   /** main -> renderer push: full library snapshot after any change */
   libraryChanged: 'library:changed',
   /** main -> renderer push: Edit menu command ('undo' | 'redo') */

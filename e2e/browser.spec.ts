@@ -68,16 +68,29 @@ test('import, skim, rate, search and persistence across relaunch', async () => {
   const strip = bars.getByTestId('asset-strip')
   await expect(strip).toBeVisible({ timeout: 30_000 })
   const box = (await strip.boundingBox())!
-  await page.mouse.move(box.x + 3, box.y + box.height / 2)
+  // Re-dispatch the hover inside each poll: a single synthetic mousemove can
+  // be dropped by Electron, and frame 0 ("0px 0px") is indistinguishable from
+  // the untouched default — so start at the RIGHT edge (distinct frame) first.
   await expect
-    .poll(async () => strip.evaluate((el) => getComputedStyle(el).backgroundPosition))
-    .not.toBe('')
-  const positionLeft = await strip.evaluate((el) => getComputedStyle(el).backgroundPosition)
-  await page.mouse.move(box.x + box.width - 3, box.y + box.height / 2)
-  await expect
-    .poll(async () => strip.evaluate((el) => getComputedStyle(el).backgroundPosition))
-    .not.toBe(positionLeft)
+    .poll(
+      async () => {
+        await page.mouse.move(box.x + box.width - 3, box.y + box.height / 2, { steps: 2 })
+        return strip.evaluate((el) => getComputedStyle(el).backgroundPosition)
+      },
+      { timeout: 10_000 }
+    )
+    .not.toBe('0px 0px')
   const positionRight = await strip.evaluate((el) => getComputedStyle(el).backgroundPosition)
+  await expect
+    .poll(
+      async () => {
+        await page.mouse.move(box.x + 3, box.y + box.height / 2, { steps: 2 })
+        return strip.evaluate((el) => getComputedStyle(el).backgroundPosition)
+      },
+      { timeout: 10_000 }
+    )
+    .not.toBe(positionRight)
+  const positionLeft = await strip.evaluate((el) => getComputedStyle(el).backgroundPosition)
   expect(positionLeft).not.toBe(positionRight)
 
   // ---- Reject + filters ----

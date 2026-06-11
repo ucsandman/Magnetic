@@ -7,6 +7,7 @@ import { importPaths } from './project-io/import'
 import { JobQueue } from './jobs/queue'
 import { generateFilmstrip } from './jobs/filmstrip'
 import { generateWaveform } from './jobs/waveform'
+import { ensurePcm, ensureProxy } from './jobs/media-derivatives'
 
 /**
  * Owns the open library and the background job queue; broadcasts a fresh
@@ -48,11 +49,34 @@ export function buildSnapshot(): LibrarySnapshot {
       waveform:
         asset.waveform === undefined
           ? undefined
-          : { ...asset.waveform, url: pathToMfileUrl(join(lib.root, asset.waveform.peaksPath)) }
+          : { ...asset.waveform, url: pathToMfileUrl(join(lib.root, asset.waveform.peaksPath)) },
+      proxyUrl:
+        asset.proxyPath === undefined ? undefined : pathToMfileUrl(join(lib.root, asset.proxyPath))
     }
     assets[id] = view
   }
   return { ...lib.library, assets }
+}
+
+/** Extract PCM once and return its mfile URL (null when the asset has no audio). */
+export async function ensurePcmUrl(assetId: string): Promise<string | null> {
+  const lib = getStore()
+  const asset = lib.assets[assetId]
+  if (asset === undefined) throw new Error(`unknown asset: ${assetId}`)
+  const relPath = await ensurePcm(lib.root, asset)
+  return relPath === null ? null : pathToMfileUrl(join(lib.root, relPath))
+}
+
+/** Transcode the preview proxy once, record it on the asset, return its URL. */
+export async function ensureProxyUrl(assetId: string): Promise<string> {
+  const lib = getStore()
+  const asset = lib.assets[assetId]
+  if (asset === undefined) throw new Error(`unknown asset: ${assetId}`)
+  const relPath = await ensureProxy(lib.root, asset)
+  if (asset.proxyPath !== relPath) {
+    lib.updateAsset(assetId, { proxyPath: relPath })
+  }
+  return pathToMfileUrl(join(lib.root, relPath))
 }
 
 function broadcastSnapshot(): void {

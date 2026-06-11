@@ -63,6 +63,11 @@ export function AssetCell({ asset, selected, onSelect, onOpen }: AssetCellProps)
           {asset.fileName}
         </span>
         <span className="asset-badges">
+          {asset.proxyUrl !== undefined && (
+            <span className="asset-proxy-badge" data-testid="asset-proxy">
+              proxy
+            </span>
+          )}
           <span className="asset-rating" data-testid="asset-rating">
             {RATING_GLYPH[asset.rating] ?? ''}
           </span>

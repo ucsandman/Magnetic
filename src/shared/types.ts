@@ -43,6 +43,8 @@ export interface MediaAsset {
   rating: Rating
   filmstrip?: FilmstripInfo
   waveform?: WaveformInfo
+  /** H.264 preview proxy for codecs WebCodecs cannot decode (phase 7). */
+  proxyPath?: string
 }
 
 export interface Event {
@@ -76,6 +78,8 @@ export interface AssetView extends Omit<MediaAsset, 'filmstrip' | 'waveform'> {
   waveform?: WaveformInfo & { url: string }
   /** mfile:// URL of the imported media file itself. */
   mediaUrl: string
+  /** mfile:// URL of the preview proxy, when one has been generated. */
+  proxyUrl?: string
 }
 
 export interface LibrarySnapshot {

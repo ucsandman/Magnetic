@@ -3,6 +3,7 @@
  *
  *   bars-1080p30.mp4  10 s testsrc2 1080p30 + 440 Hz sine (h264/aac)
  *   red-720p25.mp4     8 s solid red 720p25 (video only)
+ *   green-prores.mov   4 s solid green ProRes — WebCodecs-unsupported (proxy fallback test)
  *   tone.wav           5 s 440 Hz sine (audio only)
  *   speech.wav         Windows SAPI TTS reading fixtures-script.txt
  *
@@ -95,7 +96,24 @@ try {
     join(FIXTURES_DIR, 'red-720p25.mp4')
   ])
 
-  console.log('[3/4] tone.wav — 5 s 440 Hz sine, audio only')
+  console.log('[3/5] green-prores.mov — 4 s solid green ProRes (WebCodecs-unsupported)')
+  ffmpeg([
+    '-f',
+    'lavfi',
+    '-i',
+    'color=c=green:size=640x360:rate=30',
+    '-t',
+    '4',
+    '-c:v',
+    'prores_ks',
+    '-profile:v',
+    '2',
+    '-pix_fmt',
+    'yuv422p10le',
+    join(FIXTURES_DIR, 'green-prores.mov')
+  ])
+
+  console.log('[4/5] tone.wav — 5 s 440 Hz sine, audio only')
   ffmpeg([
     '-f',
     'lavfi',
@@ -106,7 +124,7 @@ try {
     join(FIXTURES_DIR, 'tone.wav')
   ])
 
-  console.log('[4/4] speech.wav — Windows SAPI TTS reading fixtures-script.txt')
+  console.log('[5/5] speech.wav — Windows SAPI TTS reading fixtures-script.txt')
   const speechPath = join(FIXTURES_DIR, 'speech.wav')
   const scriptText = readFileSync(SCRIPT_TXT, 'utf8').replace(/\s+/g, ' ').trim()
   const psCommand = [
@@ -121,7 +139,13 @@ try {
   })
 
   console.log('\nffprobe verification:')
-  const fixtures = ['bars-1080p30.mp4', 'red-720p25.mp4', 'tone.wav', 'speech.wav']
+  const fixtures = [
+    'bars-1080p30.mp4',
+    'red-720p25.mp4',
+    'green-prores.mov',
+    'tone.wav',
+    'speech.wav'
+  ]
   let allOk = true
   for (const name of fixtures) {
     const filePath = join(FIXTURES_DIR, name)

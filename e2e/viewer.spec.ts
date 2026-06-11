@@ -65,6 +65,7 @@ test('viewer: open, play/pause, JKL, frame step, I/O marks, decoder spike', asyn
   await page.keyboard.press('l')
   await page.waitForTimeout(1000)
   await page.keyboard.press('k')
+  await page.waitForTimeout(200) // let the <video> pause settle before sampling
   const afterPlay = await timecode(page)
   expect(afterPlay > '00:00:00:11').toBe(true) // advanced past the stepped position
   await page.waitForTimeout(400)

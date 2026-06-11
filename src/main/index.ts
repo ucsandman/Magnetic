@@ -7,6 +7,8 @@ import { buildAppMenu, watchEditState } from './menu'
 import { registerMfileScheme, installMfileHandler } from './protocol'
 import {
   buildSnapshot,
+  ensurePcmUrl,
+  ensureProxyUrl,
   getStore,
   importAndProcess,
   importViaDialog,
@@ -64,7 +66,9 @@ app.whenReady().then(() => {
     importDialog: () => importViaDialog(),
     setRating: (assetId, rating) => getStore().setRating(assetId, rating),
     getProject: () => getStore().getOrCreateDefaultProject(),
-    saveSequence: (projectId, sequence) => getStore().saveProjectSequence(projectId, sequence)
+    saveSequence: (projectId, sequence) => getStore().saveProjectSequence(projectId, sequence),
+    ensurePcm: (assetId) => ensurePcmUrl(assetId),
+    ensureProxy: (assetId) => ensureProxyUrl(assetId)
   })
   // Flush any debounced library/project writes before the process exits.
   app.on('before-quit', () => getStore().saveNow())

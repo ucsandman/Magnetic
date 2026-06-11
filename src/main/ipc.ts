@@ -3,11 +3,13 @@ import { spawn } from 'child_process'
 import { existsSync } from 'fs'
 import { z } from 'zod'
 import {
+  assetIdPayloadSchema,
   importPathsPayloadSchema,
   saveSequencePayloadSchema,
   setRatingPayloadSchema,
   type BinaryProbeResult,
-  type DiagBinariesResult
+  type DiagBinariesResult,
+  type MemoryUsage
 } from '../shared/ipc'
 import { IPC } from '../shared/channels'
 import type { ImportResult, LibrarySnapshot, Project, Sequence } from '../shared/types'
@@ -69,6 +71,8 @@ export interface IpcDeps {
   setRating(assetId: string, rating: 'none' | 'favorite' | 'rejected'): void
   getProject(): Project
   saveSequence(projectId: string, sequence: Sequence): void
+  ensurePcm(assetId: string): Promise<string | null>
+  ensureProxy(assetId: string): Promise<string>
 }
 
 export function isTestMode(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -94,6 +98,24 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
 
   handleValidated(IPC.projectSaveSequence, saveSequencePayloadSchema, async (payload) => {
     deps.saveSequence(payload.projectId, payload.sequence)
+  })
+
+  handleValidated(IPC.mediaEnsurePcm, assetIdPayloadSchema, (payload) =>
+    deps.ensurePcm(payload.assetId)
+  )
+
+  handleValidated(IPC.mediaEnsureProxy, assetIdPayloadSchema, (payload) =>
+    deps.ensureProxy(payload.assetId)
+  )
+
+  handleValidated(IPC.diagMemory, z.undefined(), async (): Promise<MemoryUsage> => {
+    const usage = process.memoryUsage()
+    return {
+      rss: usage.rss,
+      heapUsed: usage.heapUsed,
+      heapTotal: usage.heapTotal,
+      external: usage.external
+    }
   })
 
   // Test-only surface — never registered outside MAGNETIC_TEST=1.

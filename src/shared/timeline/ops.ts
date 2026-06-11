@@ -1,5 +1,5 @@
 import { flicksPerFrame } from '../timecode'
-import type { Clip, ConnectedClip, Sequence, SpineItem } from './model'
+import type { Clip, ClipFx, ConnectedClip, Sequence, SpineItem } from './model'
 import { sequenceDuration, spineIndexOf, spineStartOf } from './model'
 import { itemAtTime, reattachByTime, resolveLaneCollisions } from './magnetic'
 
@@ -395,6 +395,27 @@ export function slip(seq: Sequence, args: { clipId: string; deltaFlicks: number 
   const spine = [...seq.spine]
   spine[index] = { ...item, mediaInFlicks: mediaIn }
   return ok(seq, spine, seq.connected)
+}
+
+export const DEFAULT_FX: ClipFx = { posX: 0, posY: 0, scale: 100, rotation: 0, opacity: 100 }
+
+/** Set the video transform of a spine clip or connected clip (undoable). */
+export function setClipFx(seq: Sequence, args: { clipId: string; fx: ClipFx }): OpResult {
+  const spineIndex = spineIndexOf(seq, args.clipId)
+  if (spineIndex !== -1) {
+    const item = seq.spine[spineIndex]
+    if (item.kind !== 'clip') {
+      return fail(seq, 'invalid-target', 'gaps cannot carry fx')
+    }
+    const spine = [...seq.spine]
+    spine[spineIndex] = { ...item, fx: args.fx }
+    return ok(seq, spine, seq.connected)
+  }
+  const connectedIndex = seq.connected.findIndex((cc) => cc.id === args.clipId)
+  if (connectedIndex === -1) return fail(seq, 'unknown-id', `no clip "${args.clipId}"`)
+  const connected = [...seq.connected]
+  connected[connectedIndex] = { ...connected[connectedIndex], fx: args.fx }
+  return ok(seq, seq.spine, connected)
 }
 
 export function move(seq: Sequence, args: { clipId: string; toIndex: number }): OpResult {

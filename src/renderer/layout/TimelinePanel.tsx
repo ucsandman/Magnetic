@@ -1,6 +1,7 @@
-import { useCallback, useEffect, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { flicksToTimecode } from '../../shared/timecode'
 import { sequenceDuration } from '../../shared/timeline/model'
+import { playbackEngine } from '../playback/engine'
 import { registerShortcut } from '../shortcuts'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore, type SourceClip } from '../state/timeline-store'
@@ -27,6 +28,64 @@ export function TimelinePanel(): ReactNode {
       if (command === 'undo') store.undo()
       else store.redo()
     })
+  }, [])
+
+  const snapshotRef = useRef(snapshot)
+  useEffect(() => {
+    snapshotRef.current = snapshot
+  }, [snapshot])
+
+  // Sequence transport: space toggles, L plays, K/J pause (no reverse decode).
+  // Gated off while the SOURCE viewer is focused — its own JKL applies there.
+  useEffect(() => {
+    const togglePlayback = (): void => {
+      const store = useTimelineStore.getState()
+      if (playbackEngine.isPlaying) {
+        playbackEngine.pause()
+        return
+      }
+      const sequence = store.sequence
+      const snap = snapshotRef.current
+      if (sequence === null || snap === null || sequenceDuration(sequence) === 0) return
+      store.setViewerMode('sequence')
+      const total = sequenceDuration(sequence)
+      const from = store.playheadFlicks >= total ? 0 : store.playheadFlicks
+      void playbackEngine.play(sequence, snap, from)
+    }
+    const gate = (): boolean => {
+      if (useTimelineStore.getState().viewerMode === 'sequence') return true
+      const viewer = document.querySelector('[data-testid="panel-viewer"]')
+      return !(viewer?.contains(document.activeElement) ?? false)
+    }
+    const unsubscribers = [
+      registerShortcut('timeline-play-toggle', {
+        combo: 'space',
+        description: 'Play / pause the sequence',
+        when: gate,
+        handler: togglePlayback
+      }),
+      registerShortcut('timeline-play-l', {
+        combo: 'l',
+        description: 'Play the sequence',
+        when: gate,
+        handler: () => {
+          if (!playbackEngine.isPlaying) togglePlayback()
+        }
+      }),
+      registerShortcut('timeline-pause-k', {
+        combo: 'k',
+        description: 'Pause the sequence',
+        when: gate,
+        handler: () => playbackEngine.pause()
+      }),
+      registerShortcut('timeline-pause-j', {
+        combo: 'j',
+        description: 'Pause the sequence (reverse playback is not supported)',
+        when: gate,
+        handler: () => playbackEngine.pause()
+      })
+    ]
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
   }, [])
 
   /** Source for E/W/Q/D: first browser-selected asset + viewer I/O range when it matches. */

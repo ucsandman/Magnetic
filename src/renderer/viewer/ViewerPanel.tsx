@@ -11,14 +11,28 @@ import {
 } from '../../shared/timecode'
 import { registerShortcut } from '../shortcuts'
 import { useLibrary } from '../state/LibraryContext'
+import { useTimelineStore } from '../state/timeline-store'
+import { SequencePlayer } from './SequencePlayer'
 
 const MAX_RATE = 8
 const FALLBACK_FPS: Rational = { num: 25, den: 1 }
 
 export function ViewerPanel(): ReactNode {
   const { snapshot, openedAssetId } = useLibrary()
+  const viewerMode = useTimelineStore((state) => state.viewerMode)
+  const previousAssetRef = useRef(openedAssetId)
+  // opening a (different) source clip pulls the single viewer back to source mode
+  useEffect(() => {
+    if (openedAssetId !== null && openedAssetId !== previousAssetRef.current) {
+      useTimelineStore.getState().setViewerMode('source')
+    }
+    previousAssetRef.current = openedAssetId
+  }, [openedAssetId])
+
   const asset =
     openedAssetId !== null && snapshot !== null ? (snapshot.assets[openedAssetId] ?? null) : null
+
+  if (viewerMode === 'sequence') return <SequencePlayer />
 
   if (asset === null) {
     return (

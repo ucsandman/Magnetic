@@ -9,6 +9,18 @@ import type { Rational } from '../timecode'
  * spine is contiguous and overlap-free by construction.
  */
 
+/** Per-clip video transform (phase 7); anchor center, sequence-space 1920×1080. */
+export interface ClipFx {
+  posX: number
+  posY: number
+  /** Percent, 100 = native. */
+  scale: number
+  /** Degrees. */
+  rotation: number
+  /** Percent, 100 = opaque. */
+  opacity: number
+}
+
 export interface Clip {
   kind: 'clip'
   id: string
@@ -17,6 +29,7 @@ export interface Clip {
   durationFlicks: number
   /** Full duration of the source media — trims/slips clamp against this. */
   sourceDurationFlicks: number
+  fx?: ClipFx
 }
 
 export interface GapClip {
@@ -38,6 +51,7 @@ export interface ConnectedClip {
   mediaInFlicks: number
   durationFlicks: number
   sourceDurationFlicks: number
+  fx?: ClipFx
 }
 
 /** Placeholder — transitions are modeled in phase 8. */

@@ -18,7 +18,9 @@ const deps: IpcDeps = {
     name: 'P',
     sequence: { id: 's1', fps: { num: 30, den: 1 }, spine: [], connected: [] }
   }),
-  saveSequence: () => {}
+  saveSequence: () => {},
+  ensurePcm: async () => null,
+  ensureProxy: async () => 'mfile:///proxy.mp4'
 }
 
 function registeredChannels(): string[] {

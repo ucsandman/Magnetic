@@ -11,6 +11,7 @@ import { FLICKS_PER_SECOND, flicksPerFrame } from '../../shared/timecode'
 import { sequenceDuration, spineIndexOf } from '../../shared/timeline/model'
 import { itemAtTime } from '../../shared/timeline/magnetic'
 import { collectSnapPoints, snapTime } from '../../shared/timeline/snap'
+import { playbackEngine } from '../playback/engine'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore, type SourceClip } from '../state/timeline-store'
 import { onMediaReady } from './media-cache'
@@ -60,9 +61,10 @@ type SpineZone =
   | null
 
 export function TimelineCanvas(): ReactNode {
-  const { snapshot, openedAssetId, openAsset, setSkimTarget } = useLibrary()
+  const { snapshot, openedAssetId } = useLibrary()
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const stillBusyRef = useRef(false)
   const scrollXRef = useRef(0)
   const skimmerXRef = useRef<number | null>(null)
   const snapGuideXRef = useRef<number | null>(null)
@@ -368,6 +370,7 @@ export function TimelineCanvas(): ReactNode {
     if (state === null) return
     const { x, y } = localPoint(event)
     if (y <= RULER_H) {
+      store.setViewerMode('sequence') // scrubbing shows the sequence frame
       store.setPlayhead(xToTime(state, x))
       dragRef.current = {
         mode: 'playhead',
@@ -504,13 +507,11 @@ export function TimelineCanvas(): ReactNode {
 
     if (store.skimming && y > RULER_H) {
       skimmerXRef.current = x
-      const sequence = state.sequence
       const timeFlicks = xToTime(state, x)
-      const under = itemAtTime(sequence.spine, timeFlicks)
-      if (under !== null && under.item.kind === 'clip') {
-        const mediaFlicks = under.item.mediaInFlicks + (timeFlicks - under.startFlicks)
-        if (openedAssetIdRef.current !== under.item.assetId) openAsset(under.item.assetId)
-        setSkimTarget({ assetId: under.item.assetId, mediaFlicks })
+      // sequence-mode still preview of the frame under the skimmer
+      if (!playbackEngine.isPlaying && itemAtTime(state.sequence.spine, timeFlicks) !== null) {
+        store.setViewerMode('sequence')
+        scheduleStill(timeFlicks)
       }
       scheduleDraw()
     } else if (skimmerXRef.current !== null) {
@@ -519,10 +520,21 @@ export function TimelineCanvas(): ReactNode {
     }
   }
 
+  /** Busy-drop throttle: never queue more than one still decode at a time. */
+  const scheduleStill = (timeFlicks: number): void => {
+    if (stillBusyRef.current) return
+    const sequence = useTimelineStore.getState().sequence
+    const snapshot = snapshotRef.current
+    if (sequence === null || snapshot === null) return
+    stillBusyRef.current = true
+    void playbackEngine.renderStill(sequence, snapshot, timeFlicks).finally(() => {
+      stillBusyRef.current = false
+    })
+  }
+
   const onMouseLeave = (): void => {
     if (skimmerXRef.current !== null) {
       skimmerXRef.current = null
-      setSkimTarget(null)
       scheduleDraw()
     }
   }
