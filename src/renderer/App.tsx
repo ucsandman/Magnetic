@@ -1,28 +1,37 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { BrowserPanel } from './browser/BrowserPanel'
-import { ViewerPanel } from './layout/ViewerPanel'
+import { ViewerPanel } from './viewer/ViewerPanel'
 import { TimelinePanel } from './layout/TimelinePanel'
 import { InspectorPanel } from './layout/InspectorPanel'
 import { DebugPanel } from './layout/DebugPanel'
 import { LibraryProvider } from './state/LibraryContext'
+import { registerShortcut } from './shortcuts'
 
 export default function App(): ReactNode {
   const [inspectorVisible, setInspectorVisible] = useState(true)
   const [debugVisible, setDebugVisible] = useState(false)
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.ctrlKey && !event.shiftKey && event.key === '4') {
-        event.preventDefault()
-        setInspectorVisible((visible) => !visible)
-      }
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'd') {
-        event.preventDefault()
-        setDebugVisible((visible) => !visible)
-      }
+    const unsubscribers = [
+      registerShortcut('app-toggle-inspector', {
+        combo: 'ctrl+4',
+        description: 'Show or hide the Inspector',
+        handler: () => setInspectorVisible((visible) => !visible)
+      }),
+      registerShortcut('app-toggle-debug', {
+        combo: 'ctrl+shift+d',
+        description: 'Show or hide binary diagnostics',
+        handler: () => setDebugVisible((visible) => !visible)
+      })
+    ]
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
+  }, [])
+
+  // Decoder spike harness — test builds only (window.api.__test is gated on MAGNETIC_TEST=1).
+  useEffect(() => {
+    if (window.api.__test !== undefined) {
+      void import('./playback/decoder/spike').then((module) => module.installDecoderSpike())
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
   return (

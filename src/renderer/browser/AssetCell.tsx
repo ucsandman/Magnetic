@@ -7,11 +7,12 @@ interface AssetCellProps {
   asset: AssetView
   selected: boolean
   onSelect(event: MouseEvent): void
+  onOpen(): void
 }
 
 const RATING_GLYPH: Record<string, string> = { favorite: '★', rejected: '✕' }
 
-export function AssetCell({ asset, selected, onSelect }: AssetCellProps): ReactNode {
+export function AssetCell({ asset, selected, onSelect, onOpen }: AssetCellProps): ReactNode {
   const [frameIndex, setFrameIndex] = useState(0)
   const strip = asset.filmstrip
   const isVideo = asset.video !== undefined
@@ -30,6 +31,7 @@ export function AssetCell({ asset, selected, onSelect }: AssetCellProps): ReactN
       data-testid={`asset-cell-${asset.fileName}`}
       data-rating={asset.rating}
       onClick={onSelect}
+      onDoubleClick={onOpen}
     >
       <div
         className={`asset-media ${ready ? '' : 'shimmer'}`}

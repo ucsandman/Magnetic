@@ -16,7 +16,7 @@ type RatingFilter = 'all' | 'favorites' | 'hideRejected'
 type ViewMode = 'grid' | 'list'
 
 export function BrowserPanel(): ReactNode {
-  const { snapshot, selectedIds, setSelectedIds } = useLibrary()
+  const { snapshot, selectedIds, setSelectedIds, openAsset } = useLibrary()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<RatingFilter>('all')
   const [view, setView] = useState<ViewMode>('grid')
@@ -62,12 +62,18 @@ export function BrowserPanel(): ReactNode {
     }
   }
 
+  const openInViewer = (assetId: string): void => {
+    openAsset(assetId)
+    document.querySelector<HTMLElement>('[data-testid="panel-viewer"]')?.focus()
+  }
+
   const onKeyDown = (event: KeyboardEvent): void => {
     if (selectedIds.length === 0) return
     const key = event.key.toLowerCase()
     if (key === 'f') rateSelected('favorite')
     else if (key === 'delete') rateSelected('rejected')
     else if (key === 'u') rateSelected('none')
+    else if (key === 'enter') openInViewer(selectedIds[0])
   }
 
   const onDrop = async (event: DragEvent): Promise<void> => {
@@ -154,6 +160,7 @@ export function BrowserPanel(): ReactNode {
                   asset={asset}
                   selected={selectedIds.includes(asset.id)}
                   onSelect={(event) => selectAsset(asset, event)}
+                  onOpen={() => openInViewer(asset.id)}
                 />
               ))}
             </div>

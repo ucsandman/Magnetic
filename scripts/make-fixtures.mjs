@@ -73,6 +73,8 @@ try {
     'yuv420p',
     '-c:a',
     'aac',
+    '-movflags',
+    '+faststart',
     join(FIXTURES_DIR, 'bars-1080p30.mp4')
   ])
 
@@ -88,6 +90,8 @@ try {
     'libx264',
     '-pix_fmt',
     'yuv420p',
+    '-movflags',
+    '+faststart',
     join(FIXTURES_DIR, 'red-720p25.mp4')
   ])
 

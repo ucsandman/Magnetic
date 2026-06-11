@@ -400,6 +400,99 @@ button.active {
   background: rgb(10 132 255 / 25%);
 }
 
+/* ---- Viewer panel ---- */
+
+.panel-header-note {
+  margin-left: auto;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-text-dim);
+  font-size: 10px;
+}
+
+.viewer-toolbar {
+  font-family: Consolas, monospace;
+}
+
+.viewer-tc {
+  font-family: Consolas, monospace;
+  font-size: var(--font-size-base);
+  color: var(--color-accent);
+}
+
+.viewer-tc-dim {
+  color: var(--color-text-dim);
+}
+
+.viewer-name {
+  color: var(--color-text-dim);
+  font-size: var(--font-size-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0b;
+}
+
+.viewer-stage video {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.viewer-scrubber {
+  position: relative;
+  height: 14px;
+  background: var(--color-panel-alt);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  cursor: ew-resize;
+  flex-shrink: 0;
+}
+
+.viewer-io-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgb(255 214 10 / 30%);
+  border-left: 1px solid #ffd60a;
+  border-right: 1px solid #ffd60a;
+  pointer-events: none;
+}
+
+.viewer-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  pointer-events: none;
+}
+
+.viewer-transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+  flex-shrink: 0;
+}
+
+.transport-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border);
+  margin: 0 6px;
+}
+
 /* ---- Debug overlay ---- */
 
 .debug-panel {

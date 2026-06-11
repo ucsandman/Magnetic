@@ -5,6 +5,9 @@ interface LibraryContextValue {
   snapshot: LibrarySnapshot | null
   selectedIds: string[]
   setSelectedIds(ids: string[]): void
+  /** Asset currently loaded in the viewer. */
+  openedAssetId: string | null
+  openAsset(id: string | null): void
 }
 
 const LibraryContext = createContext<LibraryContextValue | null>(null)
@@ -12,6 +15,7 @@ const LibraryContext = createContext<LibraryContextValue | null>(null)
 export function LibraryProvider({ children }: { children: ReactNode }): ReactNode {
   const [snapshot, setSnapshot] = useState<LibrarySnapshot | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [openedAssetId, setOpenedAssetId] = useState<string | null>(null)
 
   useEffect(() => {
     let disposed = false
@@ -25,7 +29,10 @@ export function LibraryProvider({ children }: { children: ReactNode }): ReactNod
     }
   }, [])
 
-  const value = useMemo(() => ({ snapshot, selectedIds, setSelectedIds }), [snapshot, selectedIds])
+  const value = useMemo(
+    () => ({ snapshot, selectedIds, setSelectedIds, openedAssetId, openAsset: setOpenedAssetId }),
+    [snapshot, selectedIds, openedAssetId]
+  )
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>
 }
 

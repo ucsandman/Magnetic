@@ -1,10 +1,36 @@
 import { createHash } from 'crypto'
+import { execFile } from 'child_process'
 import { copyFileSync, createReadStream, existsSync } from 'fs'
 import { basename, extname, join } from 'path'
 import { randomUUID } from 'crypto'
+import { promisify } from 'util'
 import type { ImportResult, MediaAsset } from '../../shared/types'
+import { ffmpegPath } from '../binaries'
 import type { LibraryStore } from './library'
 import { probeMedia } from './probe'
+
+const execFileAsync = promisify(execFile)
+
+/** MP4-family containers get a lossless faststart remux at import so the
+ * moov atom sits up front — Chromium's media stack cannot stream
+ * moov-at-end files over the custom mfile:// scheme. */
+const REMUX_EXTENSIONS = new Set(['.mp4', '.mov', '.m4a', '.m4v'])
+
+async function copyIntoLibrary(sourcePath: string, destPath: string): Promise<void> {
+  if (REMUX_EXTENSIONS.has(extname(sourcePath).toLowerCase())) {
+    try {
+      await execFileAsync(
+        ffmpegPath(),
+        ['-v', 'error', '-y', '-i', sourcePath, '-c', 'copy', '-movflags', '+faststart', destPath],
+        { windowsHide: true }
+      )
+      return
+    } catch {
+      // fall through to byte copy — the file probed fine, so keep it playable-as-is
+    }
+  }
+  copyFileSync(sourcePath, destPath)
+}
 
 async function sha1OfFile(filePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -42,7 +68,7 @@ export async function importPaths(store: LibraryStore, paths: string[]): Promise
       const probe = await probeMedia(sourcePath)
       const fileName = destinationName(store, basename(sourcePath))
       const destPath = join(store.mediaDir(), fileName)
-      copyFileSync(sourcePath, destPath)
+      await copyIntoLibrary(sourcePath, destPath)
       const contentHash = await sha1OfFile(destPath)
       const asset: MediaAsset = {
         id: randomUUID(),
