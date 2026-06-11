@@ -25,8 +25,15 @@ const queue = new JobQueue(2, (label, error) => {
 export function initAppState(): void {
   const root = LibraryStore.resolveStartupPath()
   store = LibraryStore.open(root)
-  store.rememberAsLastUsed()
+  // An env override is a test/dev launch — never stamp it as the user's library.
+  const envOverride = process.env.MAGNETIC_LIBRARY_PATH
+  if (envOverride === undefined || envOverride === '') store.rememberAsLastUsed()
   store.onChange(() => broadcastSnapshot())
+  // Heal interrupted imports: regenerate any missing filmstrips/waveforms so
+  // assets don't sit in "processing…" forever after a mid-job shutdown.
+  for (const asset of Object.values(store.assets)) {
+    if (existsSync(join(store.root, asset.libraryRelPath))) enqueueDerivativeJobs(asset)
+  }
 }
 
 export function getStore(): LibraryStore {
@@ -147,9 +154,10 @@ function broadcastSnapshot(): void {
   }
 }
 
-function enqueueAssetJobs(asset: MediaAsset): void {
+/** Queue filmstrip/waveform generation for whichever derivatives are absent. */
+function enqueueDerivativeJobs(asset: MediaAsset): void {
   const lib = getStore()
-  if (asset.video !== undefined) {
+  if (asset.video !== undefined && asset.filmstrip === undefined) {
     queue.enqueue({
       label: `filmstrip:${asset.fileName}`,
       run: async () => {
@@ -158,7 +166,7 @@ function enqueueAssetJobs(asset: MediaAsset): void {
       }
     })
   }
-  if (asset.audio !== undefined) {
+  if (asset.audio !== undefined && asset.waveform === undefined) {
     queue.enqueue({
       label: `waveform:${asset.fileName}`,
       run: async () => {
@@ -166,8 +174,12 @@ function enqueueAssetJobs(asset: MediaAsset): void {
         lib.updateAsset(asset.id, { waveform })
       }
     })
-    if (getAutoTranscribe()) enqueueTranscription(asset.id)
   }
+}
+
+function enqueueAssetJobs(asset: MediaAsset): void {
+  enqueueDerivativeJobs(asset)
+  if (asset.audio !== undefined && getAutoTranscribe()) enqueueTranscription(asset.id)
 }
 
 /** Import files, then kick off background filmstrip/waveform generation. */

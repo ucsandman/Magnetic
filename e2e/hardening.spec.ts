@@ -226,6 +226,28 @@ test('hardening: startup, states, edges, a11y, 500 clips', async () => {
   await app.close()
 })
 
+test('interrupted import heals on relaunch (no perpetual processing)', async () => {
+  test.setTimeout(120_000)
+  const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-heal-'))
+  const libraryPath = join(tempRoot, 'Heal.mglib')
+  let app = await launchApp(libraryPath)
+  let page = await app.firstWindow()
+  const imported = await page.evaluate(
+    (paths) => window.api.__test!.importPaths(paths),
+    [join(FIXTURES, 'bars-1080p30.mp4')]
+  )
+  expect(imported.errors).toEqual([])
+  await app.close() // quit before the background filmstrip/waveform jobs finish
+
+  app = await launchApp(libraryPath)
+  page = await app.firstWindow()
+  await expect(page.getByTestId('asset-cell-bars-1080p30.mp4')).toBeVisible()
+  // startup must re-queue the missing derivatives — indicator clears, never sticks
+  await expect(page.getByTestId('asset-pending')).toHaveCount(0, { timeout: 60_000 })
+  console.log('interrupted import: derivatives regenerated on relaunch, indicator cleared')
+  await app.close()
+})
+
 test('soak: 5-minute playback, RSS growth < 25%', async () => {
   test.setTimeout(480_000)
   const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-soak-'))

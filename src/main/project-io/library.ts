@@ -86,7 +86,7 @@ export class LibraryStore {
   }
 
   rememberAsLastUsed(): void {
-    writeSettings({ lastLibraryPath: this.root })
+    writeSettings({ ...readSettings(), lastLibraryPath: this.root })
   }
 
   get library(): Library {
