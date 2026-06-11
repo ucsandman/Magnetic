@@ -20,6 +20,9 @@ export const IPC = {
   exportFrame: 'export:frame',
   exportFinish: 'export:finish',
   exportCancel: 'export:cancel',
+  transcribeRun: 'transcribe:run',
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set',
   /** main -> renderer push: full library snapshot after any change */
   libraryChanged: 'library:changed',
   /** main -> renderer push: Edit menu command ('undo' | 'redo') */

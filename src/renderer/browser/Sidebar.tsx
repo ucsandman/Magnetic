@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { LibrarySnapshot } from '../../shared/types'
 import type { TitleData } from '../../shared/timeline/model'
 import { useTimelineStore } from '../state/timeline-store'
@@ -11,6 +11,10 @@ interface SidebarProps {
 }
 
 export function Sidebar({ snapshot, selectedEventId, onSelectEvent }: SidebarProps): ReactNode {
+  const [autoTranscribe, setAutoTranscribe] = useState(true)
+  useEffect(() => {
+    void window.api.getSettings().then((settings) => setAutoTranscribe(settings.autoTranscribe))
+  }, [])
   return (
     <nav className="browser-sidebar" data-testid="browser-sidebar">
       <div className="sidebar-library">{snapshot.name}</div>
@@ -43,6 +47,21 @@ export function Sidebar({ snapshot, selectedEventId, onSelectEvent }: SidebarPro
           </li>
         ))}
       </ul>
+      <label
+        className="sidebar-setting"
+        title="Transcribe assets with audio automatically on import"
+      >
+        <input
+          type="checkbox"
+          data-testid="setting-auto-transcribe"
+          checked={autoTranscribe}
+          onChange={(event) => {
+            setAutoTranscribe(event.target.checked)
+            void window.api.setSettings({ autoTranscribe: event.target.checked })
+          }}
+        />
+        Auto-transcribe
+      </label>
     </nav>
   )
 }

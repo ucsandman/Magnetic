@@ -10,11 +10,13 @@ import {
   buildSnapshot,
   ensurePcmUrl,
   ensureProxyUrl,
+  enqueueTranscription,
   getStore,
   importAndProcess,
   importViaDialog,
   initAppState
 } from './app-state'
+import { getAutoTranscribe, setAutoTranscribe } from './project-io/library'
 
 registerMfileScheme()
 
@@ -69,7 +71,10 @@ app.whenReady().then(() => {
     getProject: () => getStore().getOrCreateDefaultProject(),
     saveSequence: (projectId, sequence) => getStore().saveProjectSequence(projectId, sequence),
     ensurePcm: (assetId) => ensurePcmUrl(assetId),
-    ensureProxy: (assetId) => ensureProxyUrl(assetId)
+    ensureProxy: (assetId) => ensureProxyUrl(assetId),
+    transcribe: (assetId) => enqueueTranscription(assetId),
+    getSettings: () => ({ autoTranscribe: getAutoTranscribe() }),
+    setSettings: (settings) => setAutoTranscribe(settings.autoTranscribe)
   })
   // Flush any debounced library/project writes before the process exits.
   app.on('before-quit', () => getStore().saveNow())

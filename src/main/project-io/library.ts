@@ -14,6 +14,15 @@ interface LibraryJson {
 
 interface SettingsJson {
   lastLibraryPath?: string
+  autoTranscribe?: boolean
+}
+
+export function getAutoTranscribe(): boolean {
+  return readSettings().autoTranscribe ?? true
+}
+
+export function setAutoTranscribe(enabled: boolean): void {
+  writeSettings({ ...readSettings(), autoTranscribe: enabled })
 }
 
 const AUTOSAVE_DELAY_MS = 500

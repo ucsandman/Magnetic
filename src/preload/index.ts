@@ -20,6 +20,9 @@ const api: MagneticApi = {
   exportFrame: (frame) => ipcRenderer.invoke(IPC.exportFrame, { frame }),
   exportFinish: () => ipcRenderer.invoke(IPC.exportFinish),
   exportCancel: () => ipcRenderer.invoke(IPC.exportCancel),
+  transcribeAsset: (assetId) => ipcRenderer.invoke(IPC.transcribeRun, { assetId }),
+  getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
+  setSettings: (settings) => ipcRenderer.invoke(IPC.settingsSet, settings),
   onLibraryChanged: (cb) => {
     const listener = (_event: unknown, snapshot: LibrarySnapshot): void => cb(snapshot)
     ipcRenderer.on(IPC.libraryChanged, listener)

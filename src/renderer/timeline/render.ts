@@ -463,6 +463,17 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
 
   drawTransitionBadges(ctx, state)
 
+  // selection time-range band (transcript word selection)
+  if (state.selection.range !== null) {
+    const x1 = timeToX(state, state.selection.range.startFlicks)
+    const x2 = timeToX(state, state.selection.range.endFlicks)
+    ctx.fillStyle = '#ffd60a26'
+    ctx.fillRect(x1, RULER_H, Math.max(1, x2 - x1), state.height - RULER_H)
+    ctx.strokeStyle = COLORS.selection
+    ctx.lineWidth = 1
+    ctx.strokeRect(x1 + 0.5, RULER_H + 0.5, Math.max(1, x2 - x1), state.height - RULER_H - 1)
+  }
+
   // hovered trim edge / edit point: yellow bracket affordance
   if (state.hoverEdge !== null && state.ghost === null) {
     const { x, y, h, edge } = state.hoverEdge

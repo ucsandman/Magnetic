@@ -37,6 +37,11 @@ export function AssetCell({ asset, selected, onSelect, onOpen }: AssetCellProps)
       }}
       onClick={onSelect}
       onDoubleClick={onOpen}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        if (asset.audio !== undefined) void window.api.transcribeAsset(asset.id)
+      }}
+      title={asset.audio !== undefined ? 'Right-click to transcribe' : undefined}
     >
       <div
         className={`asset-media ${ready ? '' : 'shimmer'}`}

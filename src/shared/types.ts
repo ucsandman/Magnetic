@@ -45,6 +45,21 @@ export interface MediaAsset {
   waveform?: WaveformInfo
   /** H.264 preview proxy for codecs WebCodecs cannot decode (phase 7). */
   proxyPath?: string
+  /** Whisper transcript JSON, cache-relative (phase 10). */
+  transcriptPath?: string
+}
+
+/** One transcribed word with media-time bounds (phase 10). */
+export interface TranscriptWord {
+  text: string
+  startFlicks: number
+  endFlicks: number
+  /** Mean token probability 0..1. */
+  p: number
+}
+
+export interface Transcript {
+  words: TranscriptWord[]
 }
 
 export interface Event {
@@ -80,6 +95,8 @@ export interface AssetView extends Omit<MediaAsset, 'filmstrip' | 'waveform'> {
   mediaUrl: string
   /** mfile:// URL of the preview proxy, when one has been generated. */
   proxyUrl?: string
+  /** mfile:// URL of the transcript JSON, when transcription has finished. */
+  transcriptUrl?: string
 }
 
 export interface LibrarySnapshot {

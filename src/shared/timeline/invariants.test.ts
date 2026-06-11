@@ -13,6 +13,7 @@ import {
   move,
   overwriteAt,
   rippleDelete,
+  rippleDeleteRange,
   roll,
   slip,
   trimRipple,
@@ -48,6 +49,7 @@ type Cmd =
   | { op: 'roll'; pick: number; deltaFrames: number; jitter: number }
   | { op: 'slip'; pick: number; deltaFrames: number; jitter: number }
   | { op: 'move'; pick: number; toPick: number }
+  | { op: 'rippleDeleteRange'; frac: number; jitter: number; durFrames: number }
 
 const durFrames = fc.integer({ min: 1, max: 50 })
 const mediaInFrames = fc.integer({ min: 0, max: 580 })
@@ -81,7 +83,8 @@ const cmdArb: fc.Arbitrary<Cmd> = fc.oneof(
   }),
   fc.record({ op: fc.constant('roll' as const), pick, deltaFrames, jitter: deltaJitter }),
   fc.record({ op: fc.constant('slip' as const), pick, deltaFrames, jitter: deltaJitter }),
-  fc.record({ op: fc.constant('move' as const), pick, toPick: pick })
+  fc.record({ op: fc.constant('move' as const), pick, toPick: pick }),
+  fc.record({ op: fc.constant('rippleDeleteRange' as const), frac, jitter, durFrames })
 )
 
 const initialArb: fc.Arbitrary<Sequence> = fc
@@ -206,6 +209,10 @@ function applyCommand(seq: Sequence, cmd: Cmd, step: number): OpResult {
         clipId: pickSpineId(seq, cmd.pick),
         toIndex: cmd.toPick % Math.max(seq.spine.length, 1)
       })
+    case 'rippleDeleteRange': {
+      const from = Math.round(cmd.frac * total) + cmd.jitter
+      return rippleDeleteRange(seq, { fromFlicks: from, toFlicks: from + cmd.durFrames * F })
+    }
   }
 }
 

@@ -73,6 +73,9 @@ export interface IpcDeps {
   saveSequence(projectId: string, sequence: Sequence): void
   ensurePcm(assetId: string): Promise<string | null>
   ensureProxy(assetId: string): Promise<string>
+  transcribe(assetId: string): void
+  getSettings(): { autoTranscribe: boolean }
+  setSettings(settings: { autoTranscribe: boolean }): void
 }
 
 export function isTestMode(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -103,6 +106,16 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
   handleValidated(IPC.mediaEnsurePcm, assetIdPayloadSchema, (payload) =>
     deps.ensurePcm(payload.assetId)
   )
+
+  handleValidated(IPC.transcribeRun, assetIdPayloadSchema, async (payload) => {
+    deps.transcribe(payload.assetId)
+  })
+
+  handleValidated(IPC.settingsGet, z.undefined(), async () => deps.getSettings())
+
+  handleValidated(IPC.settingsSet, z.object({ autoTranscribe: z.boolean() }), async (payload) => {
+    deps.setSettings(payload)
+  })
 
   handleValidated(IPC.mediaEnsureProxy, assetIdPayloadSchema, (payload) =>
     deps.ensureProxy(payload.assetId)

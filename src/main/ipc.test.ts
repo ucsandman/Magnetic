@@ -20,7 +20,10 @@ const deps: IpcDeps = {
   }),
   saveSequence: () => {},
   ensurePcm: async () => null,
-  ensureProxy: async () => 'mfile:///proxy.mp4'
+  ensureProxy: async () => 'mfile:///proxy.mp4',
+  transcribe: () => {},
+  getSettings: () => ({ autoTranscribe: true }),
+  setSettings: () => {}
 }
 
 function registeredChannels(): string[] {

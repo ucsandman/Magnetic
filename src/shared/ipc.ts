@@ -151,6 +151,10 @@ export interface MagneticApi {
   /** Close the pipe, await ffmpeg, atomic-rename `.part` → destination. */
   exportFinish(): Promise<void>
   exportCancel(): Promise<void>
+  /** Queue (or re-queue) transcription of an asset with audio. */
+  transcribeAsset(assetId: string): Promise<void>
+  getSettings(): Promise<{ autoTranscribe: boolean }>
+  setSettings(settings: { autoTranscribe: boolean }): Promise<void>
   onLibraryChanged(cb: (snapshot: import('./types').LibrarySnapshot) => void): () => void
   /** Edit menu Undo/Redo clicks pushed from main. */
   onEditCommand(cb: (command: 'undo' | 'redo') => void): () => void

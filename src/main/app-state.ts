@@ -8,6 +8,9 @@ import { JobQueue } from './jobs/queue'
 import { generateFilmstrip } from './jobs/filmstrip'
 import { generateWaveform } from './jobs/waveform'
 import { ensurePcm, ensureProxy } from './jobs/media-derivatives'
+import { generateTranscript } from './jobs/transcribe'
+import { ffmpegPath, whisperModelPath, whisperPath } from './binaries'
+import { getAutoTranscribe } from './project-io/library'
 
 /**
  * Owns the open library and the background job queue; broadcasts a fresh
@@ -51,11 +54,33 @@ export function buildSnapshot(): LibrarySnapshot {
           ? undefined
           : { ...asset.waveform, url: pathToMfileUrl(join(lib.root, asset.waveform.peaksPath)) },
       proxyUrl:
-        asset.proxyPath === undefined ? undefined : pathToMfileUrl(join(lib.root, asset.proxyPath))
+        asset.proxyPath === undefined ? undefined : pathToMfileUrl(join(lib.root, asset.proxyPath)),
+      transcriptUrl:
+        asset.transcriptPath === undefined
+          ? undefined
+          : pathToMfileUrl(join(lib.root, asset.transcriptPath))
     }
     assets[id] = view
   }
   return { ...lib.library, assets }
+}
+
+/** Queue a transcription job (manual trigger or auto-on-import). */
+export function enqueueTranscription(assetId: string): void {
+  const lib = getStore()
+  const asset = lib.assets[assetId]
+  if (asset === undefined || asset.audio === undefined) return
+  queue.enqueue({
+    label: `transcribe:${asset.fileName}`,
+    run: async () => {
+      const relPath = await generateTranscript(
+        { ffmpeg: ffmpegPath(), whisper: whisperPath(), model: whisperModelPath() },
+        lib.root,
+        asset
+      )
+      lib.updateAsset(asset.id, { transcriptPath: relPath })
+    }
+  })
 }
 
 /** Extract PCM once and return its mfile URL (null when the asset has no audio). */
@@ -105,6 +130,7 @@ function enqueueAssetJobs(asset: MediaAsset): void {
         lib.updateAsset(asset.id, { waveform })
       }
     })
+    if (getAutoTranscribe()) enqueueTranscription(asset.id)
   }
 }
 

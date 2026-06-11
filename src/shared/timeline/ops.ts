@@ -453,6 +453,37 @@ export function setClipFx(seq: Sequence, args: { clipId: string; fx: ClipFx }): 
   return ok(seq, seq.spine, connected)
 }
 
+/**
+ * Ripple-delete an arbitrary time range: ensure boundaries at both ends
+ * (splitting clips as needed, with the usual sub-frame snapping), drop every
+ * item fully inside, and let derived positions close the gap. One undo step.
+ */
+export function rippleDeleteRange(
+  seq: Sequence,
+  args: { fromFlicks: number; toFlicks: number }
+): OpResult {
+  const total = sequenceDuration(seq)
+  const from = clamp(Math.min(args.fromFlicks, args.toFlicks), 0, total)
+  const to = clamp(Math.max(args.fromFlicks, args.toFlicks), 0, total)
+  const minFlicks = flicksPerFrame(seq.fps)
+  if (to - from < minFlicks) return noop(seq)
+  const working: Working = { spine: [...seq.spine], connected: seq.connected }
+  const ids = allIds(seq)
+  const end = ensureBoundary(working, ids, to, minFlicks)
+  const start = Math.min(ensureBoundary(working, ids, from, minFlicks), end)
+  const spine: SpineItem[] = []
+  let position = 0
+  for (const item of working.spine) {
+    const itemEnd = position + item.durationFlicks
+    const covered = position >= start && itemEnd <= end
+    if (!covered) spine.push(item)
+    position = itemEnd
+  }
+  if (spine.length === working.spine.length) return noop(seq)
+  const connected = reattachByTime(seq, spine, working.connected)
+  return ok(seq, spine, connected)
+}
+
 /** Update a connected title's text payload (undoable). */
 export function setTitleData(
   seq: Sequence,

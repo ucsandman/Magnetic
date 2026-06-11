@@ -11,6 +11,7 @@ import {
   move,
   overwriteAt,
   rippleDelete,
+  rippleDeleteRange,
   roll,
   setClipFx,
   setTitleData,
@@ -24,9 +25,11 @@ import type { ClipFx, TitleData, TransitionKind } from '../../shared/timeline/mo
 import { transitionsOf } from '../../shared/timeline/transitions'
 import { TITLE_PRESETS } from '../titles/render'
 import {
+  clearRange,
   emptySelection,
   pruneSelection,
   selectOnly,
+  setRange,
   toggleInSelection,
   type Selection
 } from '../../shared/timeline/select'
@@ -81,6 +84,10 @@ interface TimelineStore {
   cycleTransitionKind(transitionId: string): void
   /** Connect a title preset at the playhead on the lane above the spine. */
   connectTitleAtPlayhead(preset: TitleData['preset']): void
+  /** Ripple-delete several time ranges as ONE undo step (back-to-front). */
+  deleteRanges(ranges: { fromFlicks: number; toFlicks: number }[]): void
+  /** Selection time-range (transcript word selection ↔ timeline band). */
+  setTimeRange(fromFlicks: number | null, toFlicks?: number): void
   load(): Promise<void>
   applyOp(op: Op): OpResult | null
   bladeAt(clipId: string, timeFlicks: number): void
@@ -305,6 +312,25 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 
     connectSourceAt(src, timeFlicks) {
       apply((seq) => connectAt(seq, { clip: clipInputFrom(src), timeFlicks, lane: 1 }))
+    },
+
+    deleteRanges(ranges) {
+      if (stack === null || ranges.length === 0) return
+      stack.beginGroup()
+      for (const range of [...ranges].sort((a, b) => b.fromFlicks - a.fromFlicks)) {
+        stack.apply((seq) => rippleDeleteRange(seq, range))
+      }
+      stack.endGroup()
+      syncFromStack()
+    },
+
+    setTimeRange(fromFlicks, toFlicks) {
+      set((state) => ({
+        selection:
+          fromFlicks === null
+            ? clearRange(state.selection)
+            : setRange(state.selection, fromFlicks, toFlicks ?? fromFlicks)
+      }))
     },
 
     deleteSelection(mode) {
