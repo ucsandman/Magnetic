@@ -6,6 +6,8 @@ A Final Cut Pro-style non-linear video editor for Windows, built with Electron, 
 
 > Portfolio project. The design is an homage to Apple's Final Cut Pro — the magnetic timeline, three-panel layout, JKL transport, and edit grammar are modeled on it as the design reference. Not affiliated with Apple; no Apple trademarks are used and "Magnetic" is an original product name.
 
+**New to Magnetic? Start with the [User Guide](docs/GUIDE.md)** — a five-minute first edit, the magnetic-timeline workflow, edit-by-transcript, and troubleshooting.
+
 ## Features
 
 - **Library model** — Libraries → Events → Projects; import copies media into the `.mglib` bundle
@@ -150,11 +152,11 @@ Renderer security: `contextIsolation: true`, `nodeIntegration: false`, `sandbox:
 
 ## Screenshots
 
-| | |
-| --- | --- |
-| ![Filmstrip browser](docs/screenshots/browser.png) Filmstrip browser — hover-skim, ratings, background jobs | ![Viewer](docs/screenshots/viewer.png) Viewer — JKL transport, frame stepping, in/out marks |
-| ![Edit-by-transcript](docs/screenshots/transcript.png) Edit-by-transcript — word-click seek, delete text to cut | ![Export dialog](docs/screenshots/export-dialog.png) Export — H.264/AAC MP4 with progress + cancel |
-| ![Shortcut overlay](docs/screenshots/shortcut-overlay.png) `Shift+?` overlay — every live binding | ![500-clip timeline](docs/screenshots/timeline-500-clips.png) 500-clip timeline — 0.7 ms median draw |
+|                                                                                                                 |                                                                                                      |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| ![Filmstrip browser](docs/screenshots/browser.png) Filmstrip browser — hover-skim, ratings, background jobs     | ![Viewer](docs/screenshots/viewer.png) Viewer — JKL transport, frame stepping, in/out marks          |
+| ![Edit-by-transcript](docs/screenshots/transcript.png) Edit-by-transcript — word-click seek, delete text to cut | ![Export dialog](docs/screenshots/export-dialog.png) Export — H.264/AAC MP4 with progress + cancel   |
+| ![Shortcut overlay](docs/screenshots/shortcut-overlay.png) `Shift+?` overlay — every live binding               | ![500-clip timeline](docs/screenshots/timeline-500-clips.png) 500-clip timeline — 0.7 ms median draw |
 
 ## Known limitations
 
