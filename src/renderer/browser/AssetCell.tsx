@@ -68,8 +68,26 @@ export function AssetCell({ asset, selected, onSelect, onOpen }: AssetCellProps)
           {asset.fileName}
         </span>
         <span className="asset-badges">
+          {asset.missing && (
+            <button
+              type="button"
+              className="asset-missing-badge"
+              data-testid="asset-relink"
+              title="Media file is missing — click to relink"
+              onClick={(event) => {
+                event.stopPropagation()
+                void window.api.relinkAsset(asset.id)
+              }}
+            >
+              ⚠ Relink
+            </button>
+          )}
           {asset.proxyUrl !== undefined && (
-            <span className="asset-proxy-badge" data-testid="asset-proxy">
+            <span
+              className="asset-proxy-badge"
+              data-testid="asset-proxy"
+              title="This codec is not natively decodable — playback uses an H.264 preview proxy"
+            >
               proxy
             </span>
           )}

@@ -23,7 +23,9 @@ const deps: IpcDeps = {
   ensureProxy: async () => 'mfile:///proxy.mp4',
   transcribe: () => {},
   getSettings: () => ({ autoTranscribe: true }),
-  setSettings: () => {}
+  setSettings: () => {},
+  relink: async () => {},
+  relinkPath: async () => {}
 }
 
 function registeredChannels(): string[] {
@@ -32,6 +34,24 @@ function registeredChannels(): string[] {
 
 beforeEach(() => {
   vi.mocked(ipcMain.handle).mockClear()
+})
+
+describe('malformed payloads reject on every channel', () => {
+  it('every registered handler rejects a garbage payload instead of running', async () => {
+    registerIpc(deps, { MAGNETIC_TEST: '1' })
+    const handlers = vi.mocked(ipcMain.handle).mock.calls as unknown as [
+      string,
+      (event: unknown, payload: unknown) => Promise<unknown>
+    ][]
+    expect(handlers.length).toBeGreaterThanOrEqual(14)
+    // a payload that satisfies NO channel schema (wrong types everywhere)
+    const garbage = { assetId: 42, paths: 'nope', rating: 'meh', projectId: null, bogus: true }
+    for (const [channel, handler] of handlers) {
+      await expect(handler({}, garbage), `channel ${channel} accepted garbage`).rejects.toThrow(
+        /Invalid payload/
+      )
+    }
+  })
 })
 
 describe('__test IPC surface gating', () => {

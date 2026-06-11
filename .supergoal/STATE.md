@@ -20,21 +20,23 @@
 | 8 | Transitions, titles, color, audio | completed | 2026-06-11 | 2026-06-11 | commit c38aa8a; all 8 criteria pass; dissolve mid exact (A+B)/2 |
 | 9 | Export | completed | 2026-06-11 | 2026-06-11 | commit b4de5b7; all 8 criteria pass; WYSIWYG diff 0.97/255 |
 | 10 | Edit-by-transcript | completed | 2026-06-11 | 2026-06-11 | commit cf790be; all 9 criteria pass; 100% word accuracy; Δ0.00-frame cuts |
-| 11 | Polish & Harden | pending | — | — | — |
+| 11 | Polish & Harden | completed | 2026-06-11 | 2026-06-11 | all 10 criteria pass; installer 498.9MB; soak ×0.821; full suite 164 unit + 14 E2E green in one run |
 
 ## Engineering check status
 
 Updated by each phase as it runs. Cleared at the start of the next phase, so this always reflects the **most recent** engineering check.
 
-- Build: pass (phase 10)
-- Typecheck: pass (phase 10)
-- Lint: pass (phase 10)
-- Tests: pass (phase 10 — 162 unit, 10 E2E)
+- Build: pass (phase 11)
+- Typecheck: pass (phase 11)
+- Lint: pass (phase 11)
+- Tests: pass (phase 11 — 164 unit, 14 E2E in one run incl. 5-min soak + packaged boot)
+- Package: pass (phase 11 — dist/magnetic-0.1.0-setup.exe, 498.9 MB)
 
 ## Notable events
 
 Append-only log of anything noteworthy that happened during execution (assumption corrected mid-run, retry, manual intervention, etc.). Each phase writes a line here.
 
+- 2026-06-11 — Phase 11 done. Relink ships duration±1-frame validation; contrast criterion forced a real fix (--color-accent-fill #0a6fe0, white-on-accent 3.65→4.81:1); dead exportProbe removed; installer 498.9 MB (whisper model + ffmpeg dominate); packaged boot E2E proves resourcesPath/bin resolution. Windows gotcha: background ffmpeg jobs hold imported media open → EBUSY on rename; hardening spec waits for derivatives then retries. Soak RSS shrank (×0.821) — warmup allocations dominate.
 - 2026-06-11 — Phase 10 done (cf790be). base.en delivered 100% word accuracy on the TTS fixture (no model bump). Whisper flags verified empirically: -ml 1 -sow -oj -ojf gives one-word segments with ms offsets + token p. Transcript panel is a pure projection — undo correctness fell out for free.
 - 2026-06-11 — Phase 9 done (b4de5b7). WYSIWYG export shipped at full pipeline strength; engine hardened en route: VideoDecoder.flush() end-of-stream hang (raced), isExporting guard against snapshot-broadcast still-renders, decode-gate B-frame deadlock breaker, arcTo negative-radius clamp. WYSIWYG diff 0.97/255 over 15 grid points.
 - 2026-06-11 — Phase 8 done (c38aa8a), resumed from WIP ef620f9. Declared deviations: transitions afterClipId-attached (ripple-safe vs spec editPointIndex); fade handles via Inspector fields (no timeline edge drags); transition resize op-only (no badge drag). wipeR shader factor was inverted — caught by pixel E2E. Effects pixel asserts use uniform-color fixtures for exact math.

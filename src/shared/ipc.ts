@@ -155,6 +155,8 @@ export interface MagneticApi {
   transcribeAsset(assetId: string): Promise<void>
   getSettings(): Promise<{ autoTranscribe: boolean }>
   setSettings(settings: { autoTranscribe: boolean }): Promise<void>
+  /** Relink a missing asset via the OS file picker (duration must match). */
+  relinkAsset(assetId: string): Promise<void>
   onLibraryChanged(cb: (snapshot: import('./types').LibrarySnapshot) => void): () => void
   /** Edit menu Undo/Redo clicks pushed from main. */
   onEditCommand(cb: (command: 'undo' | 'redo') => void): () => void
@@ -165,5 +167,6 @@ export interface MagneticApi {
   /** Present only when the app runs with MAGNETIC_TEST=1. */
   __test?: {
     importPaths(paths: string[]): Promise<import('./types').ImportResult>
+    relinkPath(assetId: string, path: string): Promise<void>
   }
 }

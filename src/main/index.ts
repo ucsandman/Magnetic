@@ -14,7 +14,9 @@ import {
   getStore,
   importAndProcess,
   importViaDialog,
-  initAppState
+  initAppState,
+  relinkAsset,
+  relinkViaDialog
 } from './app-state'
 import { getAutoTranscribe, setAutoTranscribe } from './project-io/library'
 
@@ -74,7 +76,9 @@ app.whenReady().then(() => {
     ensureProxy: (assetId) => ensureProxyUrl(assetId),
     transcribe: (assetId) => enqueueTranscription(assetId),
     getSettings: () => ({ autoTranscribe: getAutoTranscribe() }),
-    setSettings: (settings) => setAutoTranscribe(settings.autoTranscribe)
+    setSettings: (settings) => setAutoTranscribe(settings.autoTranscribe),
+    relink: (assetId) => relinkViaDialog(assetId),
+    relinkPath: (assetId, path) => relinkAsset(assetId, path)
   })
   // Flush any debounced library/project writes before the process exits.
   app.on('before-quit', () => getStore().saveNow())

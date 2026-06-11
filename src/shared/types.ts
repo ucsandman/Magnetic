@@ -97,6 +97,8 @@ export interface AssetView extends Omit<MediaAsset, 'filmstrip' | 'waveform'> {
   proxyUrl?: string
   /** mfile:// URL of the transcript JSON, when transcription has finished. */
   transcriptUrl?: string
+  /** True when the imported media file is gone from disk (needs relinking). */
+  missing: boolean
 }
 
 export interface LibrarySnapshot {

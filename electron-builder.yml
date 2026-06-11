@@ -9,8 +9,13 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-asarUnpack:
-  - resources/**
+  - '!{e2e,fixtures,scripts,test-results,playwright-report,coverage}/**'
+  - '!{.supergoal,docs}/**'
+  - '!{playwright.config.ts,*.spec.ts,*.test.ts}'
+  - '!resources/**'
+extraResources:
+  - from: resources/bin
+    to: bin
 win:
   executableName: Magnetic
 nsis:

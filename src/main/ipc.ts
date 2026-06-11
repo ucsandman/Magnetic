@@ -76,6 +76,8 @@ export interface IpcDeps {
   transcribe(assetId: string): void
   getSettings(): { autoTranscribe: boolean }
   setSettings(settings: { autoTranscribe: boolean }): void
+  relink(assetId: string): Promise<void>
+  relinkPath(assetId: string, path: string): Promise<void>
 }
 
 export function isTestMode(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -131,10 +133,17 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
     }
   })
 
+  handleValidated(IPC.relinkAsset, assetIdPayloadSchema, (payload) => deps.relink(payload.assetId))
+
   // Test-only surface — never registered outside MAGNETIC_TEST=1.
   if (isTestMode(env)) {
     handleValidated(IPC.testImportPaths, importPathsPayloadSchema, async (payload) =>
       deps.importPaths(payload.paths)
+    )
+    handleValidated(
+      IPC.testRelinkPath,
+      z.object({ assetId: z.string().min(1), path: z.string().min(1) }),
+      (payload) => deps.relinkPath(payload.assetId, payload.path)
     )
   }
 }

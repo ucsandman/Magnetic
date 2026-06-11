@@ -5,6 +5,7 @@ import { TimelinePanel } from './layout/TimelinePanel'
 import { InspectorPanel } from './layout/InspectorPanel'
 import { DebugPanel } from './layout/DebugPanel'
 import { ExportDialog } from './export/ExportDialog'
+import { ShortcutOverlay } from './layout/ShortcutOverlay'
 import { LibraryProvider } from './state/LibraryContext'
 import { registerShortcut } from './shortcuts'
 
@@ -12,6 +13,7 @@ export default function App(): ReactNode {
   const [inspectorVisible, setInspectorVisible] = useState(true)
   const [debugVisible, setDebugVisible] = useState(false)
   const [exportVisible, setExportVisible] = useState(false)
+  const [shortcutsVisible, setShortcutsVisible] = useState(false)
 
   useEffect(() => {
     const unsubscribers = [
@@ -29,6 +31,11 @@ export default function App(): ReactNode {
         combo: 'ctrl+e',
         description: 'Export the sequence as a movie',
         handler: () => setExportVisible(true)
+      }),
+      registerShortcut('app-shortcuts', {
+        combo: 'shift+?',
+        description: 'Show this keyboard shortcut list',
+        handler: () => setShortcutsVisible((visible) => !visible)
       })
     ]
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
@@ -64,6 +71,7 @@ export default function App(): ReactNode {
         <TimelinePanel />
         {debugVisible && <DebugPanel />}
         {exportVisible && <ExportDialog onClose={() => setExportVisible(false)} />}
+        {shortcutsVisible && <ShortcutOverlay onClose={() => setShortcutsVisible(false)} />}
       </div>
     </LibraryProvider>
   )

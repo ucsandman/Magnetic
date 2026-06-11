@@ -1,4 +1,5 @@
 import { BrowserWindow, dialog } from 'electron'
+import { copyFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import type { AssetView, ImportResult, LibrarySnapshot, MediaAsset } from '../shared/types'
 import { IPC } from '../shared/channels'
@@ -44,6 +45,7 @@ export function buildSnapshot(): LibrarySnapshot {
   for (const [id, asset] of Object.entries(lib.assets)) {
     const view: AssetView = {
       ...asset,
+      missing: !existsSync(join(lib.root, asset.libraryRelPath)),
       mediaUrl: pathToMfileUrl(join(lib.root, asset.libraryRelPath)),
       filmstrip:
         asset.filmstrip === undefined
@@ -63,6 +65,40 @@ export function buildSnapshot(): LibrarySnapshot {
     assets[id] = view
   }
   return { ...lib.library, assets }
+}
+
+/**
+ * Relink a missing asset to a replacement file: the duration must match
+ * within one frame, then the file is copied back into the library's media
+ * folder under the original relative path.
+ */
+export async function relinkAsset(assetId: string, newPath: string): Promise<void> {
+  const lib = getStore()
+  const asset = lib.assets[assetId]
+  if (asset === undefined) throw new Error(`unknown asset: ${assetId}`)
+  const { probeMedia } = await import('./project-io/probe')
+  const probed = await probeMedia(newPath)
+  const frameFlicks =
+    asset.video !== undefined
+      ? 705_600_000 / (asset.video.fps.num / asset.video.fps.den)
+      : 23_520_000
+  if (Math.abs(probed.durationFlicks - asset.durationFlicks) > frameFlicks) {
+    throw new Error(
+      `duration mismatch: replacement is ${(probed.durationFlicks / 705_600_000).toFixed(2)}s, asset is ${(asset.durationFlicks / 705_600_000).toFixed(2)}s`
+    )
+  }
+  copyFileSync(newPath, join(lib.root, asset.libraryRelPath))
+  lib.updateAsset(assetId, {}) // touch → snapshot broadcast clears the badge
+}
+
+/** Production relink: pick the replacement via the OS file dialog. */
+export async function relinkViaDialog(assetId: string): Promise<void> {
+  const picked = await dialog.showOpenDialog({
+    title: 'Relink Media',
+    properties: ['openFile']
+  })
+  if (picked.canceled || picked.filePaths.length === 0) return
+  await relinkAsset(assetId, picked.filePaths[0])
 }
 
 /** Queue a transcription job (manual trigger or auto-on-import). */

@@ -29,6 +29,8 @@ export const IPC = {
   editCommand: 'edit:command',
   /** renderer -> main notify: undo/redo availability for menu enablement */
   editStateChanged: 'edit:stateChanged',
+  relinkAsset: 'asset:relink',
   /** Registered only when MAGNETIC_TEST=1 (see ipc.ts registerIpc). */
-  testImportPaths: 'test:importPaths'
+  testImportPaths: 'test:importPaths',
+  testRelinkPath: 'test:relinkPath'
 } as const

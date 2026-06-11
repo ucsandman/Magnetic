@@ -23,6 +23,7 @@ const api: MagneticApi = {
   transcribeAsset: (assetId) => ipcRenderer.invoke(IPC.transcribeRun, { assetId }),
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   setSettings: (settings) => ipcRenderer.invoke(IPC.settingsSet, settings),
+  relinkAsset: (assetId) => ipcRenderer.invoke(IPC.relinkAsset, { assetId }),
   onLibraryChanged: (cb) => {
     const listener = (_event: unknown, snapshot: LibrarySnapshot): void => cb(snapshot)
     ipcRenderer.on(IPC.libraryChanged, listener)
@@ -41,7 +42,8 @@ const api: MagneticApi = {
 // MAGNETIC_TEST=1, so this is inert in production builds.
 if (process.env.MAGNETIC_TEST === '1') {
   api.__test = {
-    importPaths: (paths) => ipcRenderer.invoke(IPC.testImportPaths, { paths })
+    importPaths: (paths) => ipcRenderer.invoke(IPC.testImportPaths, { paths }),
+    relinkPath: (assetId, path) => ipcRenderer.invoke(IPC.testRelinkPath, { assetId, path })
   }
 }
 

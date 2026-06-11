@@ -478,44 +478,6 @@ export function installTimelineTestHooks(): void {
       rms: () => playbackEngine.audioRms(),
       isPlaying: () => playbackEngine.isPlaying
     },
-    /** Export pipeline probe: per-stage console logs to localize failures. */
-    exportProbe: async (maxFrames: number, destination: string): Promise<string> => {
-      const { renderMixdownWav, planExport, replayFrames } = await import('../playback/offline')
-      const sequence = useTimelineStore.getState().sequence
-      if (sequence === null) return 'no sequence'
-      const snapshot = await window.api.getLibrary()
-      console.log('[probe] mixdown…')
-      const wav = await renderMixdownWav(sequence)
-      console.log(`[probe] mixdown ok: ${wav.byteLength} bytes`)
-      const plan = planExport(sequence)
-      await window.api.exportStart({
-        destination,
-        width: 1920,
-        height: 1080,
-        fps: plan.fps,
-        scaleTo: null,
-        wav
-      })
-      console.log('[probe] exportStart ok')
-      let written = 0
-      const limit = Math.min(maxFrames, plan.frameCount)
-      await replayFrames(
-        sequence,
-        snapshot,
-        async (rgba, i) => {
-          const copy = new ArrayBuffer(rgba.byteLength)
-          new Uint8Array(copy).set(rgba)
-          await window.api.exportFrame(copy)
-          written = i + 1
-          if (written % 10 === 0) console.log(`[probe] frame ${written} written`)
-        },
-        () => written >= limit
-      )
-      console.log(`[probe] replay done at ${written} frames`)
-      await window.api.exportFinish()
-      console.log('[probe] finish ok')
-      return `ok: ${written} frames`
-    },
     undoTimes(count: number): number {
       const store = useTimelineStore.getState()
       let undone = 0
