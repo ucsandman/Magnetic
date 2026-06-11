@@ -3,7 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
-import { buildAppMenu } from './menu'
+import { buildAppMenu, watchEditState } from './menu'
 import { registerMfileScheme, installMfileHandler } from './protocol'
 import {
   buildSnapshot,
@@ -69,6 +69,7 @@ app.whenReady().then(() => {
   // Flush any debounced library/project writes before the process exits.
   app.on('before-quit', () => getStore().saveNow())
   buildAppMenu({ onImportMedia: () => void importViaDialog() })
+  watchEditState()
   createWindow()
 
   app.on('activate', () => {

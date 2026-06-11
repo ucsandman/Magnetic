@@ -17,7 +17,13 @@ const api: MagneticApi = {
     ipcRenderer.on(IPC.libraryChanged, listener)
     return () => ipcRenderer.removeListener(IPC.libraryChanged, listener)
   },
-  pathForFile: (file) => webUtils.getPathForFile(file)
+  pathForFile: (file) => webUtils.getPathForFile(file),
+  onEditCommand: (cb) => {
+    const listener = (_event: unknown, command: 'undo' | 'redo'): void => cb(command)
+    ipcRenderer.on(IPC.editCommand, listener)
+    return () => ipcRenderer.removeListener(IPC.editCommand, listener)
+  },
+  notifyEditState: (state) => ipcRenderer.send(IPC.editStateChanged, state)
 }
 
 // Test-only hook; the backing channel is only registered in main when

@@ -84,6 +84,10 @@ export interface MagneticApi {
   getProject(): Promise<import('./types').Project>
   saveSequence(projectId: string, sequence: import('./types').Sequence): Promise<void>
   onLibraryChanged(cb: (snapshot: import('./types').LibrarySnapshot) => void): () => void
+  /** Edit menu Undo/Redo clicks pushed from main. */
+  onEditCommand(cb: (command: 'undo' | 'redo') => void): () => void
+  /** Tell main whether undo/redo are currently possible (menu enablement). */
+  notifyEditState(state: { canUndo: boolean; canRedo: boolean }): void
   /** Resolve the on-disk path of a dragged-in File (webUtils). */
   pathForFile(file: File): string
   /** Present only when the app runs with MAGNETIC_TEST=1. */

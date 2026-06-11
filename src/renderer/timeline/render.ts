@@ -33,10 +33,24 @@ export interface ClipRect {
 }
 
 export interface DragGhost {
-  kind: 'move' | 'trim'
+  kind: 'move' | 'trim' | 'slip'
   /** Caret/edge x position in CSS px. */
   x: number
   clipId: string
+  /** Frame-delta tooltip, e.g. "-12f". */
+  label?: string
+}
+
+export interface HoverEdge {
+  x: number
+  y: number
+  h: number
+  edge: 'head' | 'tail' | 'point'
+}
+
+export interface SlipPreview {
+  clipId: string
+  deltaFlicks: number
 }
 
 export interface RenderState {
@@ -49,6 +63,8 @@ export interface RenderState {
   skimmerX: number | null
   snapGuideX: number | null
   ghost: DragGhost | null
+  hoverEdge: HoverEdge | null
+  slipPreview: SlipPreview | null
   width: number
   height: number
 }
@@ -364,13 +380,18 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
 
   const rects = computeClipRects(state)
   for (const rect of rects) {
+    // live slip preview: shift the media window inside the clip rect
+    const slipDelta =
+      state.slipPreview !== null && state.slipPreview.clipId === rect.id
+        ? state.slipPreview.deltaFlicks
+        : 0
     drawClipBody(
       ctx,
       state,
       rect,
       rect.label,
       rect.assetId,
-      rect.mediaInFlicks,
+      rect.mediaInFlicks + slipDelta,
       rect.durationFlicks,
       rect.isGap
     )
@@ -381,16 +402,48 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
     if (state.selection.clipIds.includes(rect.id)) drawSelection(ctx, rect)
   }
 
-  // drag ghost: insertion caret (move) or edge preview (trim)
-  if (state.ghost !== null) {
+  // hovered trim edge / edit point: yellow bracket affordance
+  if (state.hoverEdge !== null && state.ghost === null) {
+    const { x, y, h, edge } = state.hoverEdge
     ctx.strokeStyle = COLORS.selection
     ctx.lineWidth = 2
-    ctx.setLineDash(state.ghost.kind === 'move' ? [] : [4, 3])
     ctx.beginPath()
-    ctx.moveTo(state.ghost.x + 0.5, layout.spineY - 4)
-    ctx.lineTo(state.ghost.x + 0.5, layout.spineY + SPINE_H + 4)
+    if (edge === 'point') {
+      ctx.moveTo(x + 0.5, y)
+      ctx.lineTo(x + 0.5, y + h)
+    } else {
+      const lip = edge === 'head' ? 5 : -5
+      ctx.moveTo(x + lip, y + 2)
+      ctx.lineTo(x, y + 2)
+      ctx.lineTo(x, y + h - 2)
+      ctx.lineTo(x + lip, y + h - 2)
+    }
     ctx.stroke()
-    ctx.setLineDash([])
+  }
+
+  // drag ghost: insertion caret (move), edge preview (trim/roll), or slip tooltip
+  if (state.ghost !== null) {
+    if (state.ghost.kind !== 'slip') {
+      ctx.strokeStyle = COLORS.selection
+      ctx.lineWidth = 2
+      ctx.setLineDash(state.ghost.kind === 'move' ? [] : [4, 3])
+      ctx.beginPath()
+      ctx.moveTo(state.ghost.x + 0.5, layout.spineY - 4)
+      ctx.lineTo(state.ghost.x + 0.5, layout.spineY + SPINE_H + 4)
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+    if (state.ghost.label !== undefined) {
+      ctx.font = '11px Consolas, monospace'
+      const paddedWidth = ctx.measureText(state.ghost.label).width + 10
+      const labelX = Math.min(Math.max(state.ghost.x + 8, 2), state.width - paddedWidth - 2)
+      const labelY = layout.spineY - 22
+      ctx.fillStyle = '#000000cc'
+      ctx.fillRect(labelX, labelY, paddedWidth, 16)
+      ctx.fillStyle = COLORS.selection
+      ctx.textBaseline = 'top'
+      ctx.fillText(state.ghost.label, labelX + 5, labelY + 3)
+    }
   }
 
   // snapping guide

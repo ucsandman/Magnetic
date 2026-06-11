@@ -14,6 +14,10 @@ export const IPC = {
   projectSaveSequence: 'project:saveSequence',
   /** main -> renderer push: full library snapshot after any change */
   libraryChanged: 'library:changed',
+  /** main -> renderer push: Edit menu command ('undo' | 'redo') */
+  editCommand: 'edit:command',
+  /** renderer -> main notify: undo/redo availability for menu enablement */
+  editStateChanged: 'edit:stateChanged',
   /** Registered only when MAGNETIC_TEST=1 (see ipc.ts registerIpc). */
   testImportPaths: 'test:importPaths'
 } as const

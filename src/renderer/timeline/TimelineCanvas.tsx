@@ -7,8 +7,8 @@ import {
   type ReactNode,
   type WheelEvent
 } from 'react'
-import { FLICKS_PER_SECOND } from '../../shared/timecode'
-import { sequenceDuration, spineIndexOf, spineStartOf } from '../../shared/timeline/model'
+import { FLICKS_PER_SECOND, flicksPerFrame } from '../../shared/timecode'
+import { sequenceDuration, spineIndexOf } from '../../shared/timeline/model'
 import { itemAtTime } from '../../shared/timeline/magnetic'
 import { collectSnapPoints, snapTime } from '../../shared/timeline/snap'
 import { useLibrary } from '../state/LibraryContext'
@@ -18,6 +18,7 @@ import { registerDrawDriver } from './perf'
 import {
   EDGE_HIT_PX,
   RULER_H,
+  SPINE_H,
   computeClipRects,
   drawTimeline,
   pxToFlicks,
@@ -26,7 +27,9 @@ import {
   xToTime,
   type ClipRect,
   type DragGhost,
-  type RenderState
+  type HoverEdge,
+  type RenderState,
+  type SlipPreview
 } from './render'
 
 /** Snap tolerance for drags, in CSS px (converted to flicks at current zoom). */
@@ -35,15 +38,26 @@ const SNAP_TOLERANCE_PX = 9
 const DRAG_THRESHOLD_PX = 4
 
 interface DragState {
-  mode: 'move' | 'trim' | 'playhead'
+  mode: 'move' | 'trim' | 'roll' | 'slip' | 'playhead'
   clipId: string
+  /** trim: which clip edge is being dragged. */
+  edge: 'head' | 'tail'
+  /** roll: index of the edit point (left clip's spine index). */
+  editPointIndex: number
   startX: number
   started: boolean
-  /** trim: original clip end time; move: pointer offset inside the clip. */
-  origEndFlicks: number
+  /** trim/roll: original boundary position being dragged, in flicks. */
+  origBoundaryFlicks: number
   pendingDeltaFlicks: number
   pendingToIndex: number
 }
+
+/** What the pointer is over inside the spine row. */
+type SpineZone =
+  | { type: 'edit-point'; editPointIndex: number; boundaryFlicks: number; x: number }
+  | { type: 'edge'; clipId: string; edge: 'head' | 'tail'; boundaryFlicks: number; x: number }
+  | { type: 'body'; clipId: string; isGap: boolean }
+  | null
 
 export function TimelineCanvas(): ReactNode {
   const { snapshot, openedAssetId, openAsset, setSkimTarget } = useLibrary()
@@ -53,6 +67,8 @@ export function TimelineCanvas(): ReactNode {
   const skimmerXRef = useRef<number | null>(null)
   const snapGuideXRef = useRef<number | null>(null)
   const ghostRef = useRef<DragGhost | null>(null)
+  const hoverEdgeRef = useRef<HoverEdge | null>(null)
+  const slipPreviewRef = useRef<SlipPreview | null>(null)
   const dragRef = useRef<DragState | null>(null)
   const rafRef = useRef<number | null>(null)
   const snapshotRef = useRef(snapshot)
@@ -76,6 +92,8 @@ export function TimelineCanvas(): ReactNode {
       skimmerX: skimmerXRef.current,
       snapGuideX: snapGuideXRef.current,
       ghost: ghostRef.current,
+      hoverEdge: hoverEdgeRef.current,
+      slipPreview: slipPreviewRef.current,
       width: canvas.clientWidth,
       height: canvas.clientHeight
     }
@@ -156,6 +174,13 @@ export function TimelineCanvas(): ReactNode {
     return { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
   }
 
+  const framesLabel = (deltaFlicks: number): string => {
+    const sequence = useTimelineStore.getState().sequence
+    if (sequence === null) return ''
+    const frames = Math.round(deltaFlicks / flicksPerFrame(sequence.fps))
+    return `${frames >= 0 ? '+' : ''}${frames}f`
+  }
+
   /** Drag progression, fed by window-level mousemove while a drag is active. */
   const dragMove = (clientX: number): void => {
     const drag = dragRef.current
@@ -170,20 +195,38 @@ export function TimelineCanvas(): ReactNode {
     if (!drag.started && Math.abs(x - drag.startX) < DRAG_THRESHOLD_PX) return
     drag.started = true
     const sequence = state.sequence
-    if (drag.mode === 'trim') {
-      const desiredEnd = drag.origEndFlicks + pxToFlicks(state, x - drag.startX)
-      let endFlicks = Math.max(0, desiredEnd)
+    if (drag.mode === 'trim' || drag.mode === 'roll') {
+      const desiredBoundary = drag.origBoundaryFlicks + pxToFlicks(state, x - drag.startX)
+      let boundaryFlicks = Math.max(0, desiredBoundary)
       snapGuideXRef.current = null
       if (store.snapping) {
         const points = collectSnapPoints(sequence, store.playheadFlicks).filter(
-          (p) => p.timeFlicks !== drag.origEndFlicks
+          (p) => p.timeFlicks !== drag.origBoundaryFlicks
         )
-        const snapped = snapTime(endFlicks, points, pxToFlicks(state, SNAP_TOLERANCE_PX))
-        endFlicks = snapped.timeFlicks
-        if (snapped.snapped !== null) snapGuideXRef.current = timeToX(state, endFlicks)
+        const snapped = snapTime(boundaryFlicks, points, pxToFlicks(state, SNAP_TOLERANCE_PX))
+        boundaryFlicks = snapped.timeFlicks
+        if (snapped.snapped !== null) snapGuideXRef.current = timeToX(state, boundaryFlicks)
       }
-      drag.pendingDeltaFlicks = endFlicks - drag.origEndFlicks
-      ghostRef.current = { kind: 'trim', x: timeToX(state, endFlicks), clipId: drag.clipId }
+      drag.pendingDeltaFlicks = boundaryFlicks - drag.origBoundaryFlicks
+      ghostRef.current = {
+        kind: 'trim',
+        x: timeToX(state, boundaryFlicks),
+        clipId: drag.clipId,
+        label: framesLabel(drag.pendingDeltaFlicks)
+      }
+    } else if (drag.mode === 'slip') {
+      // dragging right reveals earlier media (FCP slip direction)
+      const delta = -pxToFlicks(state, x - drag.startX)
+      const item = sequence.spine.find((candidate) => candidate.id === drag.clipId)
+      if (item === undefined || item.kind !== 'clip') return
+      const clamped =
+        Math.min(
+          Math.max(item.mediaInFlicks + delta, 0),
+          item.sourceDurationFlicks - item.durationFlicks
+        ) - item.mediaInFlicks
+      drag.pendingDeltaFlicks = clamped
+      slipPreviewRef.current = { clipId: drag.clipId, deltaFlicks: clamped }
+      ghostRef.current = { kind: 'slip', x, clipId: drag.clipId, label: framesLabel(clamped) }
     } else {
       // move: caret at the nearest spine boundary to the cursor time
       const cursorFlicks = xToTime(state, x)
@@ -212,15 +255,24 @@ export function TimelineCanvas(): ReactNode {
     scheduleDraw()
   }
 
-  const finishDrag = (): void => {
-    const drag = dragRef.current
+  const clearDragOverlays = (): void => {
     dragRef.current = null
     ghostRef.current = null
     snapGuideXRef.current = null
+    slipPreviewRef.current = null
+  }
+
+  const finishDrag = (): void => {
+    const drag = dragRef.current
+    clearDragOverlays()
     const store = useTimelineStore.getState()
     if (drag !== null && drag.started) {
       if (drag.mode === 'trim' && drag.pendingDeltaFlicks !== 0) {
-        store.trimClipTail(drag.clipId, drag.pendingDeltaFlicks)
+        store.trimClip(drag.clipId, drag.edge, drag.pendingDeltaFlicks)
+      } else if (drag.mode === 'roll' && drag.pendingDeltaFlicks !== 0) {
+        store.rollEditPoint(drag.editPointIndex, drag.pendingDeltaFlicks)
+      } else if (drag.mode === 'slip' && drag.pendingDeltaFlicks !== 0) {
+        store.slipClip(drag.clipId, drag.pendingDeltaFlicks)
       } else if (drag.mode === 'move' && drag.pendingToIndex >= 0) {
         const sequence = store.sequence
         if (sequence !== null) {
@@ -234,16 +286,77 @@ export function TimelineCanvas(): ReactNode {
     scheduleDraw()
   }
 
-  /** Window-level listeners keep the drag alive when the cursor leaves the canvas. */
+  /**
+   * Window-level listeners keep the drag alive when the cursor leaves the
+   * canvas; Escape cancels without committing (kernel untouched until mouseup).
+   */
   const beginDragCapture = (): void => {
-    const onWindowMove = (event: MouseEvent): void => dragMove(event.clientX)
-    const onWindowUp = (): void => {
+    const cleanup = (): void => {
       window.removeEventListener('mousemove', onWindowMove)
       window.removeEventListener('mouseup', onWindowUp)
+      window.removeEventListener('keydown', onWindowKey, true)
+    }
+    const onWindowMove = (event: MouseEvent): void => dragMove(event.clientX)
+    const onWindowUp = (): void => {
+      cleanup()
       finishDrag()
+    }
+    const onWindowKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      event.stopPropagation()
+      cleanup()
+      clearDragOverlays()
+      scheduleDraw()
     }
     window.addEventListener('mousemove', onWindowMove)
     window.addEventListener('mouseup', onWindowUp)
+    window.addEventListener('keydown', onWindowKey, true)
+  }
+
+  /** Classify what the pointer is over inside the spine row. */
+  const detectSpineZone = (state: RenderState, x: number, y: number): SpineZone => {
+    const layout = rowLayout(state.sequence)
+    if (y < layout.spineY || y > layout.spineY + SPINE_H) return null
+    const spine = state.sequence.spine
+    let position = 0
+    for (let i = 0; i < spine.length; i++) {
+      const item = spine[i]
+      const startX = timeToX(state, position)
+      const end = position + item.durationFlicks
+      const endX = timeToX(state, end)
+      if (x >= startX && x <= endX) {
+        const nearHead = x - startX <= EDGE_HIT_PX
+        const nearTail = endX - x <= EDGE_HIT_PX
+        if (nearHead && i > 0) {
+          return { type: 'edit-point', editPointIndex: i - 1, boundaryFlicks: position, x: startX }
+        }
+        if (nearTail && i < spine.length - 1) {
+          return { type: 'edit-point', editPointIndex: i, boundaryFlicks: end, x: endX }
+        }
+        if (nearHead) {
+          return {
+            type: 'edge',
+            clipId: item.id,
+            edge: 'head',
+            boundaryFlicks: position,
+            x: startX
+          }
+        }
+        if (nearTail) {
+          return { type: 'edge', clipId: item.id, edge: 'tail', boundaryFlicks: end, x: endX }
+        }
+        return { type: 'body', clipId: item.id, isGap: item.kind === 'gap' }
+      }
+      position = end
+    }
+    return null
+  }
+
+  const startDrag = (
+    drag: Omit<DragState, 'started' | 'pendingDeltaFlicks' | 'pendingToIndex'>
+  ): void => {
+    dragRef.current = { ...drag, started: false, pendingDeltaFlicks: 0, pendingToIndex: -1 }
+    beginDragCapture()
   }
 
   // Mouse events, not pointer events: Electron does not deliver synthetic
@@ -259,39 +372,99 @@ export function TimelineCanvas(): ReactNode {
       dragRef.current = {
         mode: 'playhead',
         clipId: '',
+        edge: 'tail',
+        editPointIndex: -1,
         startX: x,
         started: true,
-        origEndFlicks: 0,
+        origBoundaryFlicks: 0,
         pendingDeltaFlicks: 0,
         pendingToIndex: -1
       }
       beginDragCapture()
       return
     }
-    const hit = hitTest(state, x, y)
-    if (hit === null) {
-      store.clearSelection()
+    const sequence = state.sequence
+    const tool = store.tool
+    const zone = detectSpineZone(state, x, y)
+
+    if (tool === 'blade') {
+      if (
+        zone !== null &&
+        (zone.type === 'body' || zone.type === 'edge') &&
+        !('isGap' in zone && zone.isGap)
+      ) {
+        const frame = flicksPerFrame(sequence.fps)
+        const clipId = zone.type === 'body' ? zone.clipId : zone.clipId
+        store.bladeAt(clipId, Math.round(xToTime(state, x) / frame) * frame)
+      }
+      return
+    }
+
+    if (zone === null) {
+      const hit = hitTest(state, x, y)
+      if (hit === null) {
+        store.clearSelection()
+      } else {
+        store.selectClip(hit.id, event.shiftKey)
+      }
       scheduleDraw()
       return
     }
-    store.selectClip(hit.id, event.shiftKey)
-    const sequence = store.sequence
-    if (sequence === null) return
-    if (hit.kind === 'spine') {
-      const isTrimEdge = x >= hit.x + hit.w - EDGE_HIT_PX
-      const start = spineStartOf(sequence, hit.id) ?? 0
-      const item = sequence.spine[spineIndexOf(sequence, hit.id)]
-      dragRef.current = {
-        mode: isTrimEdge ? 'trim' : 'move',
-        clipId: hit.id,
-        startX: x,
-        started: false,
-        origEndFlicks: start + item.durationFlicks,
-        pendingDeltaFlicks: 0,
-        pendingToIndex: -1
+
+    if (zone.type === 'edit-point') {
+      if (tool === 'trim') {
+        store.selectClip(sequence.spine[zone.editPointIndex].id, false)
+        startDrag({
+          mode: 'roll',
+          clipId: '',
+          edge: 'tail',
+          editPointIndex: zone.editPointIndex,
+          startX: x,
+          origBoundaryFlicks: zone.boundaryFlicks
+        })
+        return
       }
-      beginDragCapture()
+      // select tool at an interior boundary: grab the nearer side's edge
+      const pickTail = x <= zone.x
+      const clip = sequence.spine[pickTail ? zone.editPointIndex : zone.editPointIndex + 1]
+      store.selectClip(clip.id, event.shiftKey)
+      startDrag({
+        mode: 'trim',
+        clipId: clip.id,
+        edge: pickTail ? 'tail' : 'head',
+        editPointIndex: -1,
+        startX: x,
+        origBoundaryFlicks: zone.boundaryFlicks
+      })
+      return
     }
+
+    if (zone.type === 'edge') {
+      store.selectClip(zone.clipId, event.shiftKey)
+      startDrag({
+        mode: 'trim',
+        clipId: zone.clipId,
+        edge: zone.edge,
+        editPointIndex: -1,
+        startX: x,
+        origBoundaryFlicks: zone.boundaryFlicks
+      })
+      return
+    }
+
+    store.selectClip(zone.clipId, event.shiftKey)
+    if (zone.isGap) {
+      scheduleDraw()
+      return
+    }
+    startDrag({
+      mode: tool === 'trim' || event.altKey ? 'slip' : 'move',
+      clipId: zone.clipId,
+      edge: 'tail',
+      editPointIndex: -1,
+      startX: x,
+      origBoundaryFlicks: 0
+    })
   }
 
   const onMouseMove = (event: ReactMouseEvent<HTMLDivElement>): void => {
@@ -300,6 +473,35 @@ export function TimelineCanvas(): ReactNode {
     if (state === null) return
     const { x, y } = localPoint(event)
     const store = useTimelineStore.getState()
+
+    // hover affordances: cursor + edge bracket, per tool and zone
+    const tool = store.tool
+    let cursor = tool === 'blade' ? 'crosshair' : 'default'
+    const previousHover = hoverEdgeRef.current
+    hoverEdgeRef.current = null
+    if (tool !== 'blade') {
+      const zone = detectSpineZone(state, x, y)
+      if (zone !== null) {
+        const layout = rowLayout(state.sequence)
+        if (zone.type === 'edit-point') {
+          cursor = 'col-resize'
+          hoverEdgeRef.current = {
+            x: zone.x,
+            y: layout.spineY,
+            h: SPINE_H,
+            edge: tool === 'trim' ? 'point' : x <= zone.x ? 'tail' : 'head'
+          }
+        } else if (zone.type === 'edge') {
+          cursor = 'col-resize'
+          hoverEdgeRef.current = { x: zone.x, y: layout.spineY, h: SPINE_H, edge: zone.edge }
+        } else if (!zone.isGap) {
+          cursor = tool === 'trim' ? 'ew-resize' : 'grab'
+        }
+      }
+    }
+    if (containerRef.current !== null) containerRef.current.style.cursor = cursor
+    if (previousHover !== null || hoverEdgeRef.current !== null) scheduleDraw()
+
     if (store.skimming && y > RULER_H) {
       skimmerXRef.current = x
       const sequence = state.sequence

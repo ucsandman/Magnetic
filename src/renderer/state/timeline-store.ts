@@ -1,14 +1,17 @@
 import { create } from 'zustand'
-import type { Rational } from '../../shared/timecode'
-import type { Sequence } from '../../shared/timeline/model'
+import { flicksPerFrame, type Rational } from '../../shared/timecode'
+import { clipAtTime, sequenceDuration, type Sequence } from '../../shared/timeline/model'
 import {
   append,
+  blade,
   connectAt,
   insertAt,
   liftDelete,
   move,
   overwriteAt,
   rippleDelete,
+  roll,
+  slip,
   trimRipple,
   type ClipInput,
   type OpResult
@@ -46,6 +49,8 @@ export interface SourceClip {
 let stack: UndoStack | null = null
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 
+export type Tool = 'select' | 'blade' | 'trim'
+
 interface TimelineStore {
   projectId: string | null
   sequence: Sequence | null
@@ -54,8 +59,16 @@ interface TimelineStore {
   zoomPxPerSec: number
   snapping: boolean
   skimming: boolean
+  tool: Tool
+  setTool(tool: Tool): void
   load(): Promise<void>
   applyOp(op: Op): OpResult | null
+  bladeAt(clipId: string, timeFlicks: number): void
+  /** Blade every selected spine clip (or the clip under the playhead) at the playhead. */
+  bladeAtPlayhead(): void
+  rollEditPoint(editPointIndex: number, deltaFlicks: number): void
+  slipClip(clipId: string, deltaFlicks: number): void
+  trimClip(clipId: string, edge: 'head' | 'tail', deltaFlicks: number): void
   appendSource(src: SourceClip): void
   insertSourceAtPlayhead(src: SourceClip): void
   overwriteSourceAtPlayhead(src: SourceClip): void
@@ -63,7 +76,6 @@ interface TimelineStore {
   connectSourceAt(src: SourceClip, timeFlicks: number): void
   deleteSelection(mode: 'ripple' | 'lift'): void
   moveClip(clipId: string, toIndex: number): void
-  trimClipTail(clipId: string, deltaFlicks: number): void
   undo(): void
   redo(): void
   selectClip(id: string, additive: boolean): void
@@ -100,6 +112,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
       sequence,
       selection: pruneSelection(state.selection, sequence)
     }))
+    window.api.notifyEditState({ canUndo: stack.canUndo, canRedo: stack.canRedo })
     schedulePersist()
   }
 
@@ -128,6 +141,44 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
     zoomPxPerSec: 60,
     snapping: true,
     skimming: true,
+    tool: 'select',
+
+    setTool(tool) {
+      set({ tool })
+    },
+
+    bladeAt(clipId, timeFlicks) {
+      apply((seq) => blade(seq, { clipId, timeFlicks }))
+    },
+
+    bladeAtPlayhead() {
+      const { sequence, selection, playheadFlicks } = get()
+      if (sequence === null) return
+      const selectedSpine = selection.clipIds.filter((id) =>
+        sequence.spine.some((item) => item.id === id)
+      )
+      const targets =
+        selectedSpine.length > 0
+          ? selectedSpine
+          : [clipAtTime(sequence, playheadFlicks)?.id].filter(
+              (id): id is string => id !== undefined
+            )
+      for (const clipId of targets) {
+        apply((seq) => blade(seq, { clipId, timeFlicks: playheadFlicks }))
+      }
+    },
+
+    rollEditPoint(editPointIndex, deltaFlicks) {
+      apply((seq) => roll(seq, { editPointIndex, deltaFlicks }))
+    },
+
+    slipClip(clipId, deltaFlicks) {
+      apply((seq) => slip(seq, { clipId, deltaFlicks }))
+    },
+
+    trimClip(clipId, edge, deltaFlicks) {
+      apply((seq) => trimRipple(seq, { clipId, edge, deltaFlicks }))
+    },
 
     async load() {
       const project = await window.api.getProject()
@@ -183,10 +234,6 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
       apply((seq) => move(seq, { clipId, toIndex }))
     },
 
-    trimClipTail(clipId, deltaFlicks) {
-      apply((seq) => trimRipple(seq, { clipId, edge: 'tail', deltaFlicks }))
-    },
-
     undo() {
       stack?.undo()
       syncFromStack()
@@ -231,13 +278,67 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
   }
 })
 
+/** Deterministic PRNG (mulberry32) so the undo-storm E2E is reproducible. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a += 0x6d2b79f5
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * Apply `count` randomized edit ops through the regular store commands (the
+ * exact code paths the UI uses). Returns how many ops actually changed state.
+ */
+function applyRandomOps(count: number, seed: number, asset: Omit<SourceClip, 'fps'>): number {
+  const random = mulberry32(seed)
+  const store = useTimelineStore.getState
+  let applied = 0
+  for (let i = 0; i < count; i++) {
+    const state = store()
+    const sequence = state.sequence
+    if (sequence === null) return applied
+    const before = sequence
+    const frame = flicksPerFrame(sequence.fps)
+    const spineIds = sequence.spine.map((item) => item.id)
+    const pickSpineId = (): string => spineIds[Math.floor(random() * spineIds.length)] ?? 'none'
+    const total = sequenceDuration(sequence)
+    const time = Math.floor(random() * (total + frame))
+    const delta = Math.floor((random() - 0.5) * 120) * frame
+    const source: SourceClip = {
+      ...asset,
+      mediaInFlicks: 0,
+      durationFlicks: Math.max(frame, Math.floor((random() * asset.durationFlicks) / 4)),
+      fps: null
+    }
+    const kind = Math.floor(random() * 10)
+    if (kind === 0 || spineIds.length === 0) store().appendSource(source)
+    else if (kind === 1) store().insertSourceAtPlayhead(source)
+    else if (kind === 2) store().overwriteSourceAtPlayhead(source)
+    else if (kind === 3) store().connectSourceAt(source, Math.min(time, Math.max(0, total - frame)))
+    else if (kind === 4) store().bladeAt(pickSpineId(), time)
+    else if (kind === 5) store().trimClip(pickSpineId(), random() < 0.5 ? 'head' : 'tail', delta)
+    else if (kind === 6) store().rollEditPoint(Math.floor(random() * sequence.spine.length), delta)
+    else if (kind === 7) store().slipClip(pickSpineId(), delta)
+    else if (kind === 8)
+      store().moveClip(pickSpineId(), Math.floor(random() * sequence.spine.length))
+    else store().setPlayhead(time)
+    if (store().sequence !== before) applied += 1
+  }
+  return applied
+}
+
 /** Test-only hooks (MAGNETIC_TEST builds): deep-equal state asserts + perf harness. */
 export function installTimelineTestHooks(): void {
   const testWindow = window as unknown as Record<string, unknown>
   testWindow.__magneticState = () => {
-    const { sequence, selection, playheadFlicks, zoomPxPerSec, snapping, skimming } =
+    const { sequence, selection, playheadFlicks, zoomPxPerSec, snapping, skimming, tool } =
       useTimelineStore.getState()
-    return { sequence, selection, playheadFlicks, zoomPxPerSec, snapping, skimming }
+    return { sequence, selection, playheadFlicks, zoomPxPerSec, snapping, skimming, tool }
   }
   testWindow.__magneticTimeline = {
     buildPerfSequence(count: number, asset: Omit<SourceClip, 'fps'>) {
@@ -247,6 +348,17 @@ export function installTimelineTestHooks(): void {
       }
       store.setZoom(8)
     },
-    measureDraws: (n: number) => measureDraws(n)
+    measureDraws: (n: number) => measureDraws(n),
+    applyRandomOps,
+    undoTimes(count: number): number {
+      const store = useTimelineStore.getState()
+      let undone = 0
+      for (let i = 0; i < count; i++) {
+        const before = useTimelineStore.getState().sequence
+        store.undo()
+        if (useTimelineStore.getState().sequence !== before) undone += 1
+      }
+      return undone
+    }
   }
 }

@@ -13,11 +13,21 @@ export function TimelinePanel(): ReactNode {
   const snapping = useTimelineStore((state) => state.snapping)
   const skimming = useTimelineStore((state) => state.skimming)
   const zoomPxPerSec = useTimelineStore((state) => state.zoomPxPerSec)
+  const tool = useTimelineStore((state) => state.tool)
   const load = useTimelineStore((state) => state.load)
 
   useEffect(() => {
     void load()
   }, [load])
+
+  // Edit menu Undo/Redo (accelerators are swallowed by the menu when focused)
+  useEffect(() => {
+    return window.api.onEditCommand((command) => {
+      const store = useTimelineStore.getState()
+      if (command === 'undo') store.undo()
+      else store.redo()
+    })
+  }, [])
 
   /** Source for E/W/Q/D: first browser-selected asset + viewer I/O range when it matches. */
   const buildSource = useCallback((): SourceClip | null => {
@@ -123,6 +133,26 @@ export function TimelinePanel(): ReactNode {
         combo: 'ctrl+shift+z',
         description: 'Redo',
         handler: () => store().redo()
+      }),
+      registerShortcut('timeline-tool-select', {
+        combo: 'a',
+        description: 'Select tool',
+        handler: () => store().setTool('select')
+      }),
+      registerShortcut('timeline-tool-blade', {
+        combo: 'b',
+        description: 'Blade tool',
+        handler: () => store().setTool('blade')
+      }),
+      registerShortcut('timeline-tool-trim', {
+        combo: 't',
+        description: 'Trim tool (edges ripple, edit points roll, body slips)',
+        handler: () => store().setTool('trim')
+      }),
+      registerShortcut('timeline-blade-playhead', {
+        combo: 'ctrl+b',
+        description: 'Blade at the playhead (selected clips, or the clip under it)',
+        handler: () => store().bladeAtPlayhead()
       })
     ]
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
@@ -135,6 +165,26 @@ export function TimelinePanel(): ReactNode {
       <div className="panel-toolbar timeline-toolbar">
         <span className="timeline-tc" data-testid="timeline-playhead-tc">
           {flicksToTimecode(playheadFlicks, fps)}
+        </span>
+        <span className="timeline-tools">
+          {(
+            [
+              ['select', 'A', 'Select — drag bodies to rearrange, edges to ripple trim'],
+              ['blade', 'B', 'Blade — click a clip to cut it'],
+              ['trim', 'T', 'Trim — edges ripple, edit points roll, clip body slips']
+            ] as const
+          ).map(([id, key, title]) => (
+            <button
+              key={id}
+              type="button"
+              className={tool === id ? 'active' : ''}
+              data-testid={`tool-${id}`}
+              title={`${title} (${key})`}
+              onClick={() => useTimelineStore.getState().setTool(id)}
+            >
+              {key}
+            </button>
+          ))}
         </span>
         <span className="spacer" />
         <span data-testid="timeline-zoom" className="timeline-indicator">
