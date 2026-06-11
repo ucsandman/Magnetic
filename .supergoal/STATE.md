@@ -13,7 +13,7 @@
 | 1 | Scaffold shell & binaries | completed | 2026-06-11 | 2026-06-11 | commit aee7c7f; all 8 criteria pass |
 | 2 | Library, import & browser | completed | 2026-06-11 | 2026-06-11 | commit 7aa7d35; all 8 criteria pass |
 | 3 | Viewer & source playback | completed | 2026-06-11 | 2026-06-11 | commit f3f3358; all 8 criteria pass |
-| 4 | Magnetic timeline kernel | pending | — | — | — |
+| 4 | Magnetic timeline kernel | in_progress | 2026-06-11 | — | WIP 30b4738: model green, ops.test.ts RED, ops.ts next |
 | 5 | Timeline UI & basic edits | pending | — | — | — |
 | 6 | Edit tools & trimming | pending | — | — | — |
 | 7 | Sequence playback engine | pending | — | — | — |
@@ -38,6 +38,7 @@ Append-only log of anything noteworthy that happened during execution (assumptio
 - 2026-06-11 — Plan drafted, 11 phases. Scope: signature replica + edit-by-transcript (user-approved tier).
 - 2026-06-11 — Pre-flight green (env-level): node v24.15.0, npm 10.9.0, git 2.52.0. npm-script baseline deferred to phase 1 by design (greenfield).
 - 2026-06-11 — Dispatch ready. Baseline 26c22d9; PROTOCOL.md + repo-state.sh in place; all 11 specs validated.
+- 2026-06-11 — RUN PAUSED by user (usage limit) mid-phase-4 at WIP commit 30b4738. Phases 1-3 complete. Resume: implement src/shared/timeline/ops.ts to turn ops.test.ts green, then magnetic.ts lane/reattach logic, undo.ts, select.ts, fast-check property suites (>=200 runs x >=20 ops), coverage >=90%. Op design decided: OpResult { next, inverse: {type:'restore', sequence}, error? }, total-function (invalid args -> same seq + typed error), deterministic split ids (head keeps id, tail = `${id}:${timeFlicks}`), Clip carries sourceDurationFlicks, lane bump deterministic by array order.
 - 2026-06-11 — Phase 3 done (f3f3358). moov-at-end MP4s don't stream over custom schemes → imports faststart-remuxed. One transient browser-E2E failure observed then 2× green; watch for recurrence. mfile:// extended with Range support instead of adding magnetic-media:// (declared deviation).
 - 2026-06-11 — Phase 2 done (7aa7d35). mfile:// protocol needs corsEnabled+ACAO for renderer fetch from file:// origin; preload index.d.ts must be named global.d.ts (index.ts shadows it in tsconfig.node). locator.hover({position}) unreliable in Electron — use page.mouse.move(abs).
 - 2026-06-11 — Phase 1 done (aee7c7f). Pins: ffmpeg 8.1.1 gyan essentials, whisper.cpp v1.8.6 bin-x64 (whisper-cli.exe), ggml-base.en. Fixes en route: zod kept out of sandboxed preload (electron-vite externalizes deps); System32 bsdtar for zip extraction; bin dir resolved via __dirname not app.getAppPath().
