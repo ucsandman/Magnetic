@@ -61,7 +61,11 @@ export function AssetCell({ asset, selected, onSelect, onOpen }: AssetCellProps)
           />
         )}
         {!isVideo && asset.waveform !== undefined && <Waveform url={asset.waveform.url} />}
-        {!ready && <span className="asset-pending">processing…</span>}
+        {!ready && (
+          <span className="asset-pending" data-testid="asset-pending">
+            processing…
+          </span>
+        )}
       </div>
       <div className="asset-meta">
         <span className="asset-name" title={asset.fileName}>

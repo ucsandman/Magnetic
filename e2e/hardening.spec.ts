@@ -73,6 +73,9 @@ test('hardening: startup, states, edges, a11y, 500 clips', async () => {
     [unicodePath, join(FIXTURES, 'bars-1080p30.mp4'), join(FIXTURES, 'green-prores.mov')]
   )
   expect(imported.errors).toEqual([])
+  // import-in-progress: cells shimmer with "processing…" until background jobs land
+  await expect(page.getByTestId('asset-pending').first()).toBeVisible()
+  console.log('import progress: processing indicator shown while jobs run')
   await expect(page.getByTestId('asset-cell-日本語クリップ.mp4')).toBeVisible()
   console.log('unicode filename imported and rendered; spaced library path functional')
   await page.waitForFunction(() => {
@@ -96,6 +99,7 @@ test('hardening: startup, states, edges, a11y, 500 clips', async () => {
       { timeout: 120_000 }
     )
     .toBe(true)
+  await expect(page.getByTestId('asset-pending')).toHaveCount(0) // indicators cleared
   const library = await page.evaluate(() => window.api.getLibrary())
   const unicodeAsset = Object.values(library.assets).find(
     (asset) => asset.fileName === '日本語クリップ.mp4'
