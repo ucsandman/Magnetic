@@ -1,7 +1,7 @@
 # State: Magnetic — FCP-style NLE for Windows
 
 **Status:** RUNNING
-**Current phase:** 5
+**Current phase:** 6
 **Started:** 2026-06-11
 **Last update:** 2026-06-11
 **Baseline ref:** 26c22d9756e5f73e5266fb728e7a5252479870b2    <!-- HEAD sha captured at Stage 7 dispatch; the audit + cleanliness checks compare the COMPLETE working tree (committed + staged + unstaged + untracked) against it via repo-state.sh -->
@@ -14,7 +14,7 @@
 | 2 | Library, import & browser | completed | 2026-06-11 | 2026-06-11 | commit 7aa7d35; all 8 criteria pass |
 | 3 | Viewer & source playback | completed | 2026-06-11 | 2026-06-11 | commit f3f3358; all 8 criteria pass |
 | 4 | Magnetic timeline kernel | completed | 2026-06-11 | 2026-06-11 | commit 2212482; all 9 criteria pass; 95 kernel tests, 99.66% line cov |
-| 5 | Timeline UI & basic edits | pending | — | — | — |
+| 5 | Timeline UI & basic edits | completed | 2026-06-11 | 2026-06-11 | commit 0b7a2ed; all 9 criteria pass; perf median <1ms vs 33ms budget |
 | 6 | Edit tools & trimming | pending | — | — | — |
 | 7 | Sequence playback engine | pending | — | — | — |
 | 8 | Transitions, titles, color, audio | pending | — | — | — |
@@ -26,15 +26,16 @@
 
 Updated by each phase as it runs. Cleared at the start of the next phase, so this always reflects the **most recent** engineering check.
 
-- Build: pass (phase 4)
-- Typecheck: pass (phase 4)
-- Lint: pass (phase 4)
-- Tests: pass (phase 4 — 120 unit, 3 E2E)
+- Build: pass (phase 5)
+- Typecheck: pass (phase 5)
+- Lint: pass (phase 5)
+- Tests: pass (phase 5 — 128 unit, 5 E2E)
 
 ## Notable events
 
 Append-only log of anything noteworthy that happened during execution (assumption corrected mid-run, retry, manual intervention, etc.). Each phase writes a line here.
 
+- 2026-06-11 — Phase 5 done (0b7a2ed). Electron fires no synthetic pointermove → timeline canvas uses mouse events + window-level drag capture; canvas-in-flex blowup fixed with absolute positioning; hit rects computed from state (stale-draw class bug); phase-3 browser.spec flake root-caused (grid reflow vs cached boundingBox) and fixed. zustand added (per phase spec).
 - 2026-06-11 — Phase 4 done (2212482), resumed from WIP 30b4738. fast-check (flick-jittered, non-frame-aligned generators) shrank a real sliver bug: overwriteAt at timeFlicks=1 cut a 1-flick clip; fixed with ensureBoundary snap-to-edge. Kernel: 95 tests, 99.66% line coverage, DOM-free grep CLEAN.
 - 2026-06-11 — Plan drafted, 11 phases. Scope: signature replica + edit-by-transcript (user-approved tier).
 - 2026-06-11 — Pre-flight green (env-level): node v24.15.0, npm 10.9.0, git 2.52.0. npm-script baseline deferred to phase 1 by design (greenfield).
