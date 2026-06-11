@@ -4,12 +4,14 @@ import { ViewerPanel } from './viewer/ViewerPanel'
 import { TimelinePanel } from './layout/TimelinePanel'
 import { InspectorPanel } from './layout/InspectorPanel'
 import { DebugPanel } from './layout/DebugPanel'
+import { ExportDialog } from './export/ExportDialog'
 import { LibraryProvider } from './state/LibraryContext'
 import { registerShortcut } from './shortcuts'
 
 export default function App(): ReactNode {
   const [inspectorVisible, setInspectorVisible] = useState(true)
   const [debugVisible, setDebugVisible] = useState(false)
+  const [exportVisible, setExportVisible] = useState(false)
 
   useEffect(() => {
     const unsubscribers = [
@@ -22,6 +24,11 @@ export default function App(): ReactNode {
         combo: 'ctrl+shift+d',
         description: 'Show or hide binary diagnostics',
         handler: () => setDebugVisible((visible) => !visible)
+      }),
+      registerShortcut('app-export', {
+        combo: 'ctrl+e',
+        description: 'Export the sequence as a movie',
+        handler: () => setExportVisible(true)
       })
     ]
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
@@ -56,6 +63,7 @@ export default function App(): ReactNode {
         <InspectorPanel />
         <TimelinePanel />
         {debugVisible && <DebugPanel />}
+        {exportVisible && <ExportDialog onClose={() => setExportVisible(false)} />}
       </div>
     </LibraryProvider>
   )

@@ -136,6 +136,21 @@ export interface MagneticApi {
   ensureProxy(assetId: string): Promise<string>
   /** Main-process memory usage (playback stability E2E). */
   diagMemory(): Promise<MemoryUsage>
+  /** Native save dialog; null when cancelled. */
+  exportPickDestination(): Promise<string | null>
+  exportStart(args: {
+    destination: string
+    width: number
+    height: number
+    fps: { num: number; den: number }
+    scaleTo: { width: number; height: number } | null
+    wav: ArrayBuffer
+  }): Promise<void>
+  /** One rawvideo RGBA frame; resolves after ffmpeg's stdin accepted it. */
+  exportFrame(frame: ArrayBuffer): Promise<void>
+  /** Close the pipe, await ffmpeg, atomic-rename `.part` → destination. */
+  exportFinish(): Promise<void>
+  exportCancel(): Promise<void>
   onLibraryChanged(cb: (snapshot: import('./types').LibrarySnapshot) => void): () => void
   /** Edit menu Undo/Redo clicks pushed from main. */
   onEditCommand(cb: (command: 'undo' | 'redo') => void): () => void

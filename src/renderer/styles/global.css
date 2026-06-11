@@ -654,3 +654,60 @@ button.active {
 .sidebar-titles-header {
   margin-top: 14px;
 }
+
+/* ---- Export dialog (phase 9) ---- */
+.export-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.export-dialog {
+  width: 420px;
+  background: var(--color-panel-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-title {
+  font-size: var(--font-size-large);
+  font-weight: 600;
+}
+
+.export-dialog input[type='text'],
+.export-dialog select {
+  flex: 1;
+  background: var(--color-app-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text);
+  padding: 4px 8px;
+}
+
+.export-estimate {
+  color: var(--color-text-dim);
+  font-size: var(--font-size-small);
+}
+
+.export-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.export-error {
+  color: #ff9f9f;
+  word-break: break-word;
+}
+
+.export-dialog progress {
+  width: 100%;
+}

@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
 import { buildAppMenu, watchEditState } from './menu'
+import { registerExportIpc } from './export/encoder'
 import { registerMfileScheme, installMfileHandler } from './protocol'
 import {
   buildSnapshot,
@@ -74,6 +75,7 @@ app.whenReady().then(() => {
   app.on('before-quit', () => getStore().saveNow())
   buildAppMenu({ onImportMedia: () => void importViaDialog() })
   watchEditState()
+  registerExportIpc()
   createWindow()
 
   app.on('activate', () => {

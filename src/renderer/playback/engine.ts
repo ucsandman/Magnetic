@@ -7,11 +7,16 @@ import {
   type TitleData
 } from '../../shared/timeline/model'
 import { DEFAULT_FX } from '../../shared/timeline/ops'
-import { transitionAt, transitionsOf, editPointIndexOfCut } from '../../shared/timeline/transitions'
+import {
+  transitionAt,
+  transitionsOf,
+  editPointIndexOfCut,
+  type ActiveTransition
+} from '../../shared/timeline/transitions'
 import type { AssetView, LibrarySnapshot } from '../../shared/types'
 import { renderTitle } from '../titles/render'
 import { AudioGraphController } from './audio-graph'
-import { Compositor, type CompositedLayer } from './compositor/compositor'
+import { Compositor, SEQUENCE_H, SEQUENCE_W, type CompositedLayer } from './compositor/compositor'
 import type { DecoderHandle } from './decoder/sample-decoder'
 import { sessionFor } from './sessions'
 
@@ -122,6 +127,62 @@ class ClipPump {
   }
 }
 
+/** Sequential frame source for export: lookahead-1, presentation-due frames. */
+class OfflinePump {
+  private generator: AsyncGenerator<VideoFrame> | null = null
+  private current: VideoFrame | null = null
+  private lookahead: VideoFrame | null = null
+  private done = false
+  private lastUploadedPts = -1
+
+  constructor(private item: PlayItem) {}
+
+  async open(startMediaSec: number): Promise<void> {
+    if (this.item.asset === null) return
+    const handle = await sessionFor(this.item.asset)
+    this.generator = handle.decodeRange(
+      Math.max(0, startMediaSec) * FLICKS_PER_SECOND,
+      Number.MAX_SAFE_INTEGER
+    )
+  }
+
+  /** Clone of the frame due at mediaMicros — only when it CHANGED (texture reuse). */
+  async frameFor(mediaMicros: number): Promise<VideoFrame | null> {
+    if (this.generator === null) return null
+    while (!this.done) {
+      if (this.lookahead === null) {
+        const result = await this.generator.next()
+        if (result.done === true) {
+          this.done = true
+          break
+        }
+        this.lookahead = result.value
+      }
+      if (this.lookahead !== null && this.lookahead.timestamp <= mediaMicros) {
+        this.current?.close()
+        this.current = this.lookahead
+        this.lookahead = null
+      } else {
+        break
+      }
+    }
+    if (this.current !== null && this.current.timestamp !== this.lastUploadedPts) {
+      this.lastUploadedPts = this.current.timestamp
+      return this.current.clone()
+    }
+    return null
+  }
+
+  dispose(): void {
+    this.current?.close()
+    this.lookahead?.close()
+    this.current = null
+    this.lookahead = null
+    void this.generator?.return(undefined)
+    this.generator = null
+  }
+}
+
 export class PlaybackEngine {
   private compositor: Compositor | null = null
   private audio: AudioGraphController | null = null
@@ -151,6 +212,12 @@ export class PlaybackEngine {
 
   get isPlaying(): boolean {
     return this.playing
+  }
+
+  private exporting = false
+
+  get isExporting(): boolean {
+    return this.exporting
   }
 
   private ensureAudio(): AudioGraphController {
@@ -266,6 +333,7 @@ export class PlaybackEngine {
   private sequence: Sequence | null = null
 
   async play(sequence: Sequence, snapshot: LibrarySnapshot, fromFlicks: number): Promise<void> {
+    if (this.exporting) return
     this.pause()
     this.stillToken += 1
     const audio = this.ensureAudio()
@@ -341,33 +409,7 @@ export class PlaybackEngine {
         spinePresentedSeqSec = item.startSec + pump.presentedPtsMicros / 1_000_000 - item.mediaInSec
       }
     }
-    const layers: CompositedLayer[] = []
-    for (const item of visibleItems) {
-      if (item.titleData !== undefined) {
-        layers.push(this.titleLayer(item, effectiveT))
-        continue
-      }
-      if (!dueBySlot.has(item.clipId)) continue
-      if (activeTransition !== null && item.layer === 0) {
-        if (item.clipId === activeTransition.bClipId) continue // folded into the blend
-        if (item.clipId === activeTransition.aClipId) {
-          layers.push({
-            slot: item.clipId,
-            frame: dueBySlot.get(item.clipId)!,
-            fx: item.fx,
-            blend: {
-              slotB: activeTransition.bClipId,
-              frameB: dueBySlot.get(activeTransition.bClipId) ?? null,
-              progress: activeTransition.progress,
-              kind: activeTransition.kind
-            }
-          })
-          continue
-        }
-      }
-      layers.push({ slot: item.clipId, frame: dueBySlot.get(item.clipId)!, fx: item.fx })
-    }
-    this.compositor.draw(layers)
+    this.compositor.draw(this.assembleLayers(visibleItems, dueBySlot, activeTransition, effectiveT))
 
     // drift sample once per second: clock vs presented spine-frame PTS
     if (tSec - this.fromSec >= this.nextDriftSampleAt && spinePresentedSeqSec !== null) {
@@ -380,6 +422,106 @@ export class PlaybackEngine {
 
     this.onTime?.(Math.round(tSec * FLICKS_PER_SECOND))
     this.raf = requestAnimationFrame(this.tick)
+  }
+
+  /** One shared layer assembly for tick, renderStill and exportReplay. */
+  private assembleLayers(
+    visibleItems: PlayItem[],
+    frames: Map<string, VideoFrame | null>,
+    activeTransition: ActiveTransition | null,
+    tSec: number
+  ): CompositedLayer[] {
+    const layers: CompositedLayer[] = []
+    for (const item of visibleItems) {
+      if (item.titleData !== undefined) {
+        layers.push(this.titleLayer(item, tSec))
+        continue
+      }
+      if (!frames.has(item.clipId)) continue
+      if (activeTransition !== null && item.layer === 0) {
+        if (item.clipId === activeTransition.bClipId) continue // folded into the blend
+        if (item.clipId === activeTransition.aClipId) {
+          layers.push({
+            slot: item.clipId,
+            frame: frames.get(item.clipId)!,
+            fx: item.fx,
+            blend: {
+              slotB: activeTransition.bClipId,
+              frameB: frames.get(activeTransition.bClipId) ?? null,
+              progress: activeTransition.progress,
+              kind: activeTransition.kind
+            }
+          })
+          continue
+        }
+      }
+      layers.push({ slot: item.clipId, frame: frames.get(item.clipId)!, fx: item.fx })
+    }
+    return layers
+  }
+
+  /**
+   * Deterministic export replay: render frame i at its centered time through
+   * the SAME items/transition/title/color pipeline as preview, then hand the
+   * top-down RGBA pixels to the (awaited, backpressuring) callback.
+   * Returns false if cancelled.
+   */
+  async exportReplay(
+    sequence: Sequence,
+    snapshot: LibrarySnapshot,
+    frameCount: number,
+    frameFlicks: number,
+    onFrame: (rgba: Uint8ClampedArray, frameIndex: number) => Promise<void>,
+    isCancelled: () => boolean
+  ): Promise<boolean> {
+    if (this.compositor === null) throw new Error('compositor is not attached')
+    this.pause()
+    this.stillToken += 1
+    this.exporting = true
+    this.sequence = sequence
+    const items = this.buildItems(sequence, snapshot)
+    const pumps = new Map<string, OfflinePump>()
+    try {
+      for (let i = 0; i < frameCount; i++) {
+        if (isCancelled()) return false
+        const tSec = ((i + 0.5) * frameFlicks) / FLICKS_PER_SECOND
+        const visible = items.filter(
+          (item) => tSec >= item.startSec - item.inHalfSec && tSec < item.endSec + item.outHalfSec
+        )
+        for (const item of visible) {
+          if (item.titleData !== undefined || item.asset === null) continue
+          if (!pumps.has(item.clipId)) {
+            const pump = new OfflinePump(item)
+            await pump.open(
+              item.mediaInSec + (Math.max(tSec, item.startSec - item.inHalfSec) - item.startSec)
+            )
+            pumps.set(item.clipId, pump)
+          }
+        }
+        for (const [clipId, pump] of pumps) {
+          if (!visible.some((item) => item.clipId === clipId)) {
+            pump.dispose()
+            pumps.delete(clipId)
+          }
+        }
+        const frames = new Map<string, VideoFrame | null>()
+        for (const item of visible) {
+          if (item.titleData !== undefined) continue
+          const pump = pumps.get(item.clipId)
+          if (pump === undefined) continue
+          const mediaMicros = (item.mediaInSec + (tSec - item.startSec)) * 1_000_000
+          frames.set(item.clipId, await pump.frameFor(mediaMicros))
+        }
+        const activeTransition = transitionAt(sequence, tSec * FLICKS_PER_SECOND)
+        this.compositor.draw(this.assembleLayers(visible, frames, activeTransition, tSec))
+        const pixels = this.compositor.readPixels(0, 0, SEQUENCE_W, SEQUENCE_H)
+        await onFrame(pixels, i)
+      }
+      return true
+    } finally {
+      this.exporting = false
+      for (const pump of pumps.values()) pump.dispose()
+    }
   }
 
   pause(): void {
@@ -401,7 +543,9 @@ export class PlaybackEngine {
     snapshot: LibrarySnapshot,
     timeFlicks: number
   ): Promise<void> {
-    if (this.playing || this.compositor === null) return
+    // never fight an active export for the compositor (a mid-export library
+    // snapshot broadcast, e.g. proxy creation, retriggers still effects)
+    if (this.playing || this.exporting || this.compositor === null) return
     const token = ++this.stillToken
     const tSec = timeFlicks / FLICKS_PER_SECOND
     const items = this.buildItems(sequence, snapshot).filter(
@@ -430,32 +574,7 @@ export class PlaybackEngine {
         frames.set(item.clipId, null) // decode failure: keep last texture
       }
     }
-    const layers: CompositedLayer[] = []
-    for (const item of items) {
-      if (item.titleData !== undefined) {
-        layers.push(this.titleLayer(item, tSec))
-        continue
-      }
-      if (!frames.has(item.clipId)) continue
-      if (activeTransition !== null && item.layer === 0) {
-        if (item.clipId === activeTransition.bClipId) continue
-        if (item.clipId === activeTransition.aClipId) {
-          layers.push({
-            slot: item.clipId,
-            frame: frames.get(item.clipId)!,
-            fx: item.fx,
-            blend: {
-              slotB: activeTransition.bClipId,
-              frameB: frames.get(activeTransition.bClipId) ?? null,
-              progress: activeTransition.progress,
-              kind: activeTransition.kind
-            }
-          })
-          continue
-        }
-      }
-      layers.push({ slot: item.clipId, frame: frames.get(item.clipId)!, fx: item.fx })
-    }
+    const layers = this.assembleLayers(items, frames, activeTransition, tSec)
     if (token === this.stillToken && this.compositor !== null) {
       this.compositor.draw(layers)
     } else {

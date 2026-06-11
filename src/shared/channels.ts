@@ -15,6 +15,11 @@ export const IPC = {
   mediaEnsurePcm: 'media:ensurePcm',
   mediaEnsureProxy: 'media:ensureProxy',
   diagMemory: 'diag:memory',
+  exportPickDestination: 'export:pickDestination',
+  exportStart: 'export:start',
+  exportFrame: 'export:frame',
+  exportFinish: 'export:finish',
+  exportCancel: 'export:cancel',
   /** main -> renderer push: full library snapshot after any change */
   libraryChanged: 'library:changed',
   /** main -> renderer push: Edit menu command ('undo' | 'redo') */

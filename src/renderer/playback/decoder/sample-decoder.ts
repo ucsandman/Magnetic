@@ -134,13 +134,21 @@ export async function openSample(url: string): Promise<DecoderHandle> {
     let feedIndex = startIndex
     let flushed = false
     let produced = 0
+    let gateStalls = 0
     try {
       while (produced < frameCount) {
         if (decodeError !== null) throw decodeError
         if (buffered.length === 0) {
           if (feedIndex < samples.length) {
-            // Backpressure: keep at most MAX_BUFFERED_FRAMES in flight.
-            if (decoder.decodeQueueSize + buffered.length < MAX_BUFFERED_FRAMES) {
+            // Backpressure: keep at most MAX_BUFFERED_FRAMES in flight. If the
+            // decoder withholds outputs until it sees MORE input (B-frame
+            // reordering), the gate would deadlock — break the stall by
+            // force-feeding one chunk after ~50 idle ticks.
+            if (
+              decoder.decodeQueueSize + buffered.length < MAX_BUFFERED_FRAMES ||
+              gateStalls > 50
+            ) {
+              gateStalls = 0
               const sample = samples[feedIndex]
               feedIndex += 1
               decoder.decode(
@@ -151,13 +159,21 @@ export async function openSample(url: string): Promise<DecoderHandle> {
                 })
               )
             } else {
+              gateStalls += 1
               await new Promise((resolveSleep) => setTimeout(resolveSleep, 0))
             }
             continue
           }
           if (!flushed) {
             flushed = true
-            await decoder.flush()
+            // VideoDecoder.flush() can intermittently never settle at end of
+            // stream (observed on D3D11 h264). Race it: any frames it does
+            // deliver land in `buffered` via the output callback either way,
+            // and the unreachable trailing frames sit past the media window.
+            await Promise.race([
+              decoder.flush().catch(() => undefined),
+              new Promise((resolveSleep) => setTimeout(resolveSleep, 2000))
+            ])
             continue
           }
           break // out of samples and fully flushed

@@ -11,6 +11,89 @@ import { gainAutomationFor } from './automation'
  * audio, silent when stopped (analyser RMS proves it in E2E).
  */
 
+export interface AudioJob {
+  assetId: string
+  clipStartSec: number
+  mediaInSec: number
+  durSec: number
+  fx: ClipFx
+}
+
+/** Every audible clip in the sequence (titles are silent). */
+export function collectAudioJobs(sequence: Sequence): AudioJob[] {
+  const startOf = spineStartIndex(sequence.spine)
+  const jobs: AudioJob[] = []
+  let position = 0
+  for (const item of sequence.spine) {
+    if (item.kind === 'clip') {
+      jobs.push({
+        assetId: item.assetId,
+        clipStartSec: flicksToSeconds(position),
+        mediaInSec: flicksToSeconds(item.mediaInFlicks),
+        durSec: flicksToSeconds(item.durationFlicks),
+        fx: { ...DEFAULT_FX, ...(item.fx ?? {}) }
+      })
+    }
+    position += item.durationFlicks
+  }
+  for (const cc of sequence.connected) {
+    if (cc.titleData !== undefined) continue
+    const parentStart = startOf.get(cc.parentClipId)
+    if (parentStart === undefined) continue
+    jobs.push({
+      assetId: cc.assetId,
+      clipStartSec: flicksToSeconds(parentStart + cc.offsetFlicks),
+      mediaInSec: flicksToSeconds(cc.mediaInFlicks),
+      durSec: flicksToSeconds(cc.durationFlicks),
+      fx: { ...DEFAULT_FX, ...(cc.fx ?? {}) }
+    })
+  }
+  return jobs
+}
+
+/**
+ * Schedule one clip's audio into any BaseAudioContext (live or offline) —
+ * the context-injection seam that keeps preview and export on one code path.
+ */
+export function scheduleAudioJob(
+  ctx: BaseAudioContext,
+  destination: AudioNode,
+  buffer: AudioBuffer,
+  job: AudioJob,
+  fromSec: number,
+  startCtxTime: number
+): AudioBufferSourceNode | null {
+  const intoClip = Math.max(0, fromSec - job.clipStartSec)
+  const remaining = job.durSec - intoClip
+  if (remaining <= 0) return null
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  const gain = ctx.createGain()
+  const panner = ctx.createStereoPanner()
+  panner.pan.value = Math.max(-1, Math.min(1, job.fx.pan))
+  source.connect(gain)
+  gain.connect(panner)
+  panner.connect(destination)
+  // fade envelope is relative to the CLIP; past anchors clamp to "now"
+  const points = gainAutomationFor({
+    startCtxTime: startCtxTime + (job.clipStartSec - fromSec),
+    durationSec: job.durSec,
+    fadeInSec: flicksToSeconds(job.fx.fadeInFlicks),
+    fadeOutSec: flicksToSeconds(job.fx.fadeOutFlicks),
+    volumeDb: job.fx.volumeDb
+  })
+  gain.gain.setValueAtTime(points[0].value, Math.max(0, points[0].atCtxTime))
+  for (const point of points.slice(1)) {
+    gain.gain.linearRampToValueAtTime(point.value, Math.max(0, point.atCtxTime))
+  }
+  source.start(
+    startCtxTime + Math.max(0, job.clipStartSec - fromSec),
+    job.mediaInSec + intoClip,
+    remaining
+  )
+  return source
+}
+
 export class AudioGraphController {
   readonly ctx: AudioContext
   readonly analyser: AnalyserNode
@@ -55,76 +138,20 @@ export class AudioGraphController {
   /** Schedule every audible clip from `fromFlicks`, anchored at `startCtxTime`. */
   async build(sequence: Sequence, fromFlicks: number, startCtxTime: number): Promise<void> {
     this.stop()
-    const fromSec = flicksToSeconds(fromFlicks)
-    const startOf = spineStartIndex(sequence.spine)
-    interface AudioJob {
-      assetId: string
-      clipStartSec: number
-      mediaInSec: number
-      durSec: number
-      fx: ClipFx
-    }
-    const jobs: AudioJob[] = []
-    let position = 0
-    for (const item of sequence.spine) {
-      if (item.kind === 'clip') {
-        jobs.push({
-          assetId: item.assetId,
-          clipStartSec: flicksToSeconds(position),
-          mediaInSec: flicksToSeconds(item.mediaInFlicks),
-          durSec: flicksToSeconds(item.durationFlicks),
-          fx: { ...DEFAULT_FX, ...(item.fx ?? {}) }
-        })
-      }
-      position += item.durationFlicks
-    }
-    for (const cc of sequence.connected) {
-      if (cc.titleData !== undefined) continue // titles are silent
-      const parentStart = startOf.get(cc.parentClipId)
-      if (parentStart === undefined) continue
-      jobs.push({
-        assetId: cc.assetId,
-        clipStartSec: flicksToSeconds(parentStart + cc.offsetFlicks),
-        mediaInSec: flicksToSeconds(cc.mediaInFlicks),
-        durSec: flicksToSeconds(cc.durationFlicks),
-        fx: { ...DEFAULT_FX, ...(cc.fx ?? {}) }
-      })
-    }
+    const jobs = collectAudioJobs(sequence)
     const buffers = await Promise.all(jobs.map((job) => this.bufferFor(job.assetId)))
     for (let i = 0; i < jobs.length; i++) {
       const buffer = buffers[i]
       if (buffer === null) continue
-      const job = jobs[i]
-      const intoClip = Math.max(0, fromSec - job.clipStartSec)
-      const remaining = job.durSec - intoClip
-      if (remaining <= 0) continue
-      const source = this.ctx.createBufferSource()
-      source.buffer = buffer
-      const gain = this.ctx.createGain()
-      const panner = this.ctx.createStereoPanner()
-      panner.pan.value = Math.max(-1, Math.min(1, job.fx.pan))
-      source.connect(gain)
-      gain.connect(panner)
-      panner.connect(this.master)
-      // fade envelope is relative to the CLIP; past anchors clamp to "now"
-      const clipStartCtx = startCtxTime + (job.clipStartSec - fromSec)
-      const points = gainAutomationFor({
-        startCtxTime: clipStartCtx,
-        durationSec: job.durSec,
-        fadeInSec: flicksToSeconds(job.fx.fadeInFlicks),
-        fadeOutSec: flicksToSeconds(job.fx.fadeOutFlicks),
-        volumeDb: job.fx.volumeDb
-      })
-      gain.gain.setValueAtTime(points[0].value, Math.max(0, points[0].atCtxTime))
-      for (const point of points.slice(1)) {
-        gain.gain.linearRampToValueAtTime(point.value, Math.max(0, point.atCtxTime))
-      }
-      source.start(
-        startCtxTime + Math.max(0, job.clipStartSec - fromSec),
-        job.mediaInSec + intoClip,
-        remaining
+      const source = scheduleAudioJob(
+        this.ctx,
+        this.master,
+        buffer,
+        jobs[i],
+        flicksToSeconds(fromFlicks),
+        startCtxTime
       )
-      this.active.push(source)
+      if (source !== null) this.active.push(source)
     }
   }
 

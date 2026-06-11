@@ -139,7 +139,8 @@ function roundedRectPath(
   h: number,
   r: number
 ): void {
-  const radius = Math.min(r, w / 2, h / 2)
+  // sub-pixel rects (1-frame clips at low zoom) must not produce a negative radius
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2))
   ctx.beginPath()
   ctx.moveTo(x + radius, y)
   ctx.arcTo(x + w, y, x + w, y + h, radius)

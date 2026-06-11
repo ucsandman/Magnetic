@@ -15,6 +15,11 @@ const api: MagneticApi = {
   ensurePcm: (assetId) => ipcRenderer.invoke(IPC.mediaEnsurePcm, { assetId }),
   ensureProxy: (assetId) => ipcRenderer.invoke(IPC.mediaEnsureProxy, { assetId }),
   diagMemory: () => ipcRenderer.invoke(IPC.diagMemory),
+  exportPickDestination: () => ipcRenderer.invoke(IPC.exportPickDestination),
+  exportStart: (args) => ipcRenderer.invoke(IPC.exportStart, args),
+  exportFrame: (frame) => ipcRenderer.invoke(IPC.exportFrame, { frame }),
+  exportFinish: () => ipcRenderer.invoke(IPC.exportFinish),
+  exportCancel: () => ipcRenderer.invoke(IPC.exportCancel),
   onLibraryChanged: (cb) => {
     const listener = (_event: unknown, snapshot: LibrarySnapshot): void => cb(snapshot)
     ipcRenderer.on(IPC.libraryChanged, listener)
