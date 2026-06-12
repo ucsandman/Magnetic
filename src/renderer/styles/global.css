@@ -658,6 +658,35 @@ select,
   }
 }
 
+.audio-meter {
+  width: 72px;
+  height: 6px;
+  margin-right: 10px;
+  border-radius: 3px;
+  background: var(--color-border);
+  overflow: hidden;
+  display: inline-flex;
+  align-self: center;
+}
+
+.audio-meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: none;
+}
+
+.audio-meter-green {
+  background: #3fb950;
+}
+
+.audio-meter-yellow {
+  background: #d29922;
+}
+
+.audio-meter-red {
+  background: #f85149;
+}
+
 .viewer-name {
   color: var(--color-text-dim);
   font-size: var(--font-size-small);

@@ -5,6 +5,7 @@ import { playbackEngine } from '../playback/engine'
 import { goToSequenceEnd, seekSequence, toggleSequencePlayback } from '../playback/transport'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
+import { AudioMeter } from './AudioMeter'
 import { TimecodeInput } from './TimecodeInput'
 
 /**
@@ -68,6 +69,7 @@ export function SequencePlayer(): ReactNode {
           testId="sequence-timecode"
         />
         <span className="spacer" />
+        <AudioMeter />
         <span data-testid="sequence-playing">{isPlaying ? 'playing' : 'paused'}</span>
       </div>
       <div className="panel-body">

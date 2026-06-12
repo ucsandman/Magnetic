@@ -187,6 +187,7 @@ test('loop playback: Ctrl+L toggles, sequence wraps at the end and keeps playing
   await page.keyboard.press('e')
   await page.keyboard.press(' ')
   await expect(page.getByTestId('viewer-mode')).toHaveText('sequence')
+  await expect(page.getByTestId('sequence-playing')).toHaveText('playing')
   await page.getByTestId('sequence-play-pause').click()
   await expect(page.getByTestId('sequence-playing')).toHaveText('paused')
 
@@ -264,7 +265,11 @@ test('timecode entry: click-to-type seeks, Escape cancels, garbage rejects visib
   await page.keyboard.press('e')
   await page.keyboard.press(' ')
   await expect(page.getByTestId('viewer-mode')).toHaveText('sequence')
+  // wait for playback to actually start — clicking ⏸ before the engine is
+  // playing is a second "play" (the button is an honest engine-state toggle)
+  await expect(page.getByTestId('sequence-playing')).toHaveText('playing')
   await page.getByTestId('sequence-play-pause').click()
+  await expect(page.getByTestId('sequence-playing')).toHaveText('paused')
   await page.getByTestId('sequence-go-start').click()
 
   const input = page.getByTestId('timecode-input')
@@ -387,6 +392,37 @@ test('play marked range: / plays in->out and pauses at out; loop wraps the range
   expect(
     await page.getByTestId('viewer-video').evaluate((el) => (el as HTMLVideoElement).paused)
   ).toBe(false)
+
+  await app.close()
+})
+
+test('audio meter: live during tone playback, decays to the floor after pause', async () => {
+  test.setTimeout(240_000)
+  const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-ux-meter-'))
+  const app = await launchApp(join(tempRoot, 'UxMeter.mglib'))
+  const page = await app.firstWindow()
+  await importFixtures(page, ['tone.wav'])
+
+  // tone on the spine, sequence playing
+  await page.getByTestId('asset-cell-tone.wav').click()
+  await page.keyboard.press('e')
+  await page.keyboard.press(' ')
+  await expect(page.getByTestId('viewer-mode')).toHaveText('sequence')
+  await expect(page.getByTestId('sequence-playing')).toHaveText('playing')
+
+  // meter rises above the floor while the tone plays
+  const meter = page.getByTestId('sequence-meter')
+  await expect(meter).toBeVisible()
+  await expect
+    .poll(async () => Number(await meter.getAttribute('aria-valuenow')), { timeout: 20_000 })
+    .toBeGreaterThan(-55)
+
+  // pause: the meter returns to the floor
+  await page.getByTestId('sequence-play-pause').click()
+  await expect(page.getByTestId('sequence-playing')).toHaveText('paused')
+  await expect
+    .poll(async () => Number(await meter.getAttribute('aria-valuenow')), { timeout: 5_000 })
+    .toBe(-60)
 
   await app.close()
 })
