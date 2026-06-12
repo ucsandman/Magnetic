@@ -16,6 +16,11 @@ for (const file of files) {
     rows.push({ combo: match[2], desc: match[3] })
   }
 }
+// the same binding may register from mutually-exclusive components (e.g.
+// shift+f in both viewer modes) — one table row
+const unique = new Map(rows.map((row) => [`${row.combo}|${row.desc}`, row]))
+rows.length = 0
+rows.push(...unique.values())
 rows.sort((a, b) => a.combo.localeCompare(b.combo))
 console.log(`count: ${rows.length}`)
 for (const row of rows) console.log(`| \`${row.combo}\` | ${row.desc} |`)

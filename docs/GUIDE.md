@@ -37,7 +37,9 @@ Everything else below is refinement of those seven steps.
 
 ## 3. The Viewer: review before you edit
 
-Double-click any clip in the browser to open it — or just select it and press `Space` (or the ▶ button under the viewer): the clip opens and plays immediately. The bar under the picture has go-to-start, play/pause, and frame-step buttons, so nothing requires the keyboard.
+Double-click any clip in the browser to open it — or just select it and press `Space` (or the ▶ button under the viewer): the clip opens and plays immediately. The bar under the picture has go-to-start, play/pause, frame-step, loop, and fullscreen buttons, so nothing requires the keyboard.
+
+**Precision review:** click the timecode and type where you want to go (`1:02:12`, or just `500` for 5 s — digits fill in right-to-left, `Enter` seeks, `Esc` cancels). `Ctrl+L` (or 🔁) loops playback — with marks set, the loop wraps inside the marked range. `/` plays exactly the marked range and parks on the out point, so you can audition a selection before cutting it in. `Shift+F` (or ⛶) takes the viewer fullscreen for distraction-free review; `Esc` comes back.
 
 **Compare takes side by side:** select two or more clips (`Shift`-click) and press the **Watch N** button in the browser toolbar. Up to 9 clips play at once in a grid — click a cell to hear its audio, click again to mute, and double-click the winner to open it in the viewer. `Esc` closes the grid.
 
@@ -52,6 +54,9 @@ Double-click any clip in the browser to open it — or just select it and press 
 | `Home` / `End`        | Jump to the start / end of the clip                       |
 | `I` / `O`             | Mark in / out                                             |
 | `X`                   | Clear marks                                               |
+| `/`                   | Play the marked range, pausing on the out point           |
+| `Ctrl+L`              | Loop playback (loops the marked range when set)           |
+| `Shift+F`             | Fullscreen viewer (`Esc` exits)                           |
 
 **The marks matter:** when a clip has an in/out range marked, `E`/`W`/`Q`/`D` edit _that range_ into the timeline, not the whole clip. This is the single biggest workflow upgrade over drag-and-drop editing — review, mark, edit, never trim twice.
 
@@ -83,6 +88,7 @@ You can also drag a clip from the browser straight onto the timeline.
 
 - `Space` play/pause · `Home`/`End` jump to start/end · `↑`/`↓` jump between edit points · click the ruler to move the playhead. The sequence viewer has the same controls as buttons under the picture.
 - `=` / `-` zoom in/out, `Shift+Z` zooms to fit the whole sequence. `S` toggles **skimming** (the preview follows your mouse across the timeline — great for hunting a moment, distracting when fine-trimming, so toggle it).
+- Zoomed past one screen, a **minimap** strip appears along the bottom of the timeline: the whole sequence at a glance, with a rectangle marking what you're looking at. Click or drag in it to jump anywhere — essential on hour-long cuts. During playback the view pages along with the playhead automatically; the sequence viewer also shows a live **audio meter** while it plays.
 - `N` toggles **snapping** — drags and trims click onto clip edges and the playhead. Turn it off for sub-frame nudging.
 - Drag a clip's body to rearrange the spine; the other clips shuffle around it magnetically.
 
