@@ -69,6 +69,7 @@ export interface IpcDeps {
   importPaths(paths: string[]): Promise<ImportResult>
   importDialog(): Promise<ImportResult>
   setRating(assetId: string, rating: 'none' | 'favorite' | 'rejected'): void
+  deleteAsset(assetId: string): void
   getProject(): Project
   saveSequence(projectId: string, sequence: Sequence): void
   ensurePcm(assetId: string): Promise<string | null>
@@ -97,6 +98,10 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
 
   handleValidated(IPC.assetSetRating, setRatingPayloadSchema, async (payload) => {
     deps.setRating(payload.assetId, payload.rating)
+  })
+
+  handleValidated(IPC.assetDelete, assetIdPayloadSchema, async (payload) => {
+    deps.deleteAsset(payload.assetId)
   })
 
   handleValidated(IPC.projectGet, z.undefined(), async () => deps.getProject())

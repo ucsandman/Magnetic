@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { flicksToTimecode } from '../../shared/timecode'
 import { sequenceDuration } from '../../shared/timeline/model'
 import { playbackEngine } from '../playback/engine'
-import { registerShortcut } from '../shortcuts'
+import { isEditableTarget, registerShortcut } from '../shortcuts'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore, type SourceClip } from '../state/timeline-store'
 import { TimelineCanvas } from '../timeline/TimelineCanvas'
@@ -119,6 +119,7 @@ export function TimelinePanel(): ReactNode {
       const source = buildSource()
       if (source !== null) edit(source)
     }
+    const notEditable = (): boolean => !isEditableTarget(document.activeElement)
     const unsubscribers = [
       registerShortcut('timeline-append', {
         combo: 'e',
@@ -217,6 +218,51 @@ export function TimelinePanel(): ReactNode {
         combo: 'ctrl+t',
         description: 'Add a 1 s cross dissolve at the edit point nearest the playhead',
         handler: () => store().addTransitionAtPlayhead()
+      }),
+      // Clipboard combos shadow the Edit-menu copy/paste roles (their menu
+      // accelerators are unregistered, see menu.ts). Text fields keep native
+      // copy/paste: the registry skips editable targets, belt-and-braces here.
+      registerShortcut('timeline-copy', {
+        combo: 'ctrl+c',
+        description: 'Copy the selected clips',
+        when: notEditable,
+        handler: () => store().copySelection()
+      }),
+      registerShortcut('timeline-paste', {
+        combo: 'ctrl+v',
+        description: 'Paste clips at the playhead (insert)',
+        when: notEditable,
+        handler: () => store().pasteAtPlayhead('insert')
+      }),
+      registerShortcut('timeline-paste-connect', {
+        combo: 'ctrl+shift+v',
+        description: 'Paste clips connected above the spine at the playhead',
+        when: notEditable,
+        handler: () => store().pasteAtPlayhead('connect')
+      }),
+      registerShortcut('timeline-duplicate', {
+        combo: 'ctrl+d',
+        description: 'Duplicate the selected clips after the selection',
+        when: notEditable,
+        handler: () => store().duplicateSelection()
+      }),
+      registerShortcut('timeline-paste-attributes', {
+        combo: 'ctrl+alt+v',
+        description: 'Paste the copied clip’s effects onto the selected clips',
+        when: notEditable,
+        handler: () => store().pasteAttributes()
+      }),
+      registerShortcut('timeline-detach-audio', {
+        combo: 'ctrl+shift+s',
+        description: 'Detach audio from the selected spine clip into the lane below',
+        handler: () => {
+          const { sequence, selection } = store()
+          if (sequence === null) return
+          const target = selection.clipIds.find((id) =>
+            sequence.spine.some((item) => item.id === id && item.kind === 'clip')
+          )
+          if (target !== undefined) store().detachAudio(target)
+        }
       })
     ]
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())

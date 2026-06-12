@@ -15,6 +15,29 @@ function transcript(words: [string, number, number, number?][]): Transcript {
 }
 
 describe('projectTranscript', () => {
+  it('projects detached-audio clips once (spine muted, lane -1 child carries the words)', () => {
+    const base = clip('a', 60)
+    const s = seq(
+      [{ ...base, audioDisabled: true }],
+      [
+        {
+          id: 'a:audio',
+          assetId: base.assetId,
+          parentClipId: 'a',
+          offsetFlicks: 0,
+          lane: -1,
+          mediaInFlicks: 0,
+          durationFlicks: 60 * F,
+          sourceDurationFlicks: 600 * F
+        }
+      ]
+    )
+    const words = projectTranscript(s, new Map([['asset-a', transcript([['once', 10, 20]])]]))
+    expect(words).toHaveLength(1)
+    expect(words[0].clipId).toBe('a:audio')
+  })
+
+
   it('maps words through mediaIn into sequence time and drops mid-cut words', () => {
     // clip shows media [60, 120); word A inside, word B straddles the cut
     const s = seq([clip('a', 60, 60)])

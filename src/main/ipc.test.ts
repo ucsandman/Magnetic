@@ -13,6 +13,7 @@ const deps: IpcDeps = {
   importPaths: async () => ({ importedIds: [], errors: [] }),
   importDialog: async () => ({ importedIds: [], errors: [] }),
   setRating: () => {},
+  deleteAsset: () => {},
   getProject: () => ({
     id: 'p1',
     name: 'P',

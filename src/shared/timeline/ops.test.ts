@@ -1,16 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { sequenceDuration, spineStartOf, connectedStartOf, type Clip } from './model'
+import {
+  sequenceDuration,
+  spineStartOf,
+  connectedStartOf,
+  type Clip,
+  type ConnectedClip
+} from './model'
 import {
   append,
   blade,
   connectAt,
+  DEFAULT_FX,
+  detachAudio,
   insertAt,
   liftDelete,
   move,
   overwriteAt,
   rippleDelete,
   roll,
+  setCaptionSettings,
   slip,
+  trimConnected,
   trimRipple
 } from './ops'
 import { F, clip, connected, gap, seq } from './testing'
@@ -156,6 +166,27 @@ describe('connectAt', () => {
     const { next } = connectAt(s, { clip: newClip('c2', 10), timeFlicks: 5 * F, lane: -1 })
     const c2 = next.connected.find((candidate) => candidate.id === 'c2')!
     expect(c2.lane).toBe(-2)
+  })
+
+  it('carries the ClipInput fx — including keyframe tracks — onto the connected clip', () => {
+    const s = seq([clip('a', 20)])
+    const fx = {
+      ...DEFAULT_FX,
+      scale: 50,
+      kf: { scale: [{ atMediaFlicks: 0, value: 50, ease: 'linear' as const }] }
+    }
+    const { next } = connectAt(s, {
+      clip: { ...newClip('cc', 4), fx },
+      timeFlicks: 2 * F,
+      lane: 1
+    })
+    expect(next.connected[0].fx).toEqual(fx)
+  })
+
+  it('leaves fx undefined when the ClipInput carries none', () => {
+    const s = seq([clip('a', 20)])
+    const { next } = connectAt(s, { clip: newClip('cc', 4), timeFlicks: 2 * F, lane: 1 })
+    expect(next.connected[0].fx).toBeUndefined()
   })
 })
 
@@ -374,6 +405,167 @@ describe('slip', () => {
   })
 })
 
+/** Lane −1 audio clip with a non-zero media in-point (the builder's default is 0). */
+function audioConnected(
+  id: string,
+  parentClipId: string,
+  offsetFrames: number,
+  durationFrames: number,
+  mediaInFrames = 0,
+  lane = -1
+): ConnectedClip {
+  return {
+    ...connected(id, parentClipId, offsetFrames, durationFrames, lane),
+    mediaInFlicks: mediaInFrames * F
+  }
+}
+
+describe('detachAudio', () => {
+  it('disables the spine clip audio and adds a matching lane -1 connected clip', () => {
+    const s = seq([clip('a', 10, 2)])
+    const { next, error } = detachAudio(s, { clipId: 'a' })
+    expect(error).toBeUndefined()
+    const spineClip = next.spine[0] as Clip
+    expect(spineClip.audioDisabled).toBe(true)
+    expect(spineClip.mediaInFlicks).toBe(2 * F) // video untouched
+    expect(spineClip.durationFlicks).toBe(10 * F)
+    expect(next.connected).toHaveLength(1)
+    const audio = next.connected[0]
+    expect(audio.id).toBe('a:audio')
+    expect(audio.assetId).toBe('asset-a')
+    expect(audio.parentClipId).toBe('a')
+    expect(audio.offsetFlicks).toBe(0)
+    expect(audio.lane).toBe(-1)
+    expect(audio.mediaInFlicks).toBe(2 * F)
+    expect(audio.durationFlicks).toBe(10 * F)
+    expect(audio.sourceDurationFlicks).toBe(600 * F)
+    expect(connectedStartOf(next, 'a:audio')).toBe(0)
+  })
+
+  it('rejects a second detach on the same clip', () => {
+    const s = seq([clip('a', 10)])
+    const first = detachAudio(s, { clipId: 'a' })
+    const second = detachAudio(first.next, { clipId: 'a' })
+    expect(second.error?.code).toBe('invalid-target')
+    expect(second.next).toBe(first.next)
+  })
+
+  it('rejects gaps and non-spine ids (titles/connected clips)', () => {
+    const s = seq([clip('a', 10), gap('g', 5)], [connected('title', 'a', 0, 4)])
+    expect(detachAudio(s, { clipId: 'g' }).error?.code).toBe('invalid-target')
+    expect(detachAudio(s, { clipId: 'title' }).error?.code).toBe('unknown-id')
+    expect(detachAudio(s, { clipId: 'zzz' }).error?.code).toBe('unknown-id')
+  })
+
+  it('bumps to lane -2 when an audio clip already occupies lane -1', () => {
+    const s = seq([clip('a', 10)], [connected('music', 'a', 0, 10, -1)])
+    const { next } = detachAudio(s, { clipId: 'a' })
+    const audio = next.connected.find((cc) => cc.id === 'a:audio')!
+    expect(audio.lane).toBe(-2) // earlier clip keeps lane -1
+    expect(next.connected.find((cc) => cc.id === 'music')!.lane).toBe(-1)
+  })
+
+  it('allocates a fresh id when <clipId>:audio is taken', () => {
+    const s = seq([clip('a', 10)], [connected('a:audio', 'a', 0, 3)])
+    const { next } = detachAudio(s, { clipId: 'a' })
+    expect(next.connected.map((cc) => cc.id)).toContain('a:audio~2')
+  })
+
+  it('returns an inverse that restores the pre-detach sequence', () => {
+    const s = seq([clip('a', 10, 2)])
+    const result = detachAudio(s, { clipId: 'a' })
+    expect(result.next).not.toBe(s)
+    expect(result.inverse.type).toBe('restore')
+    expect(result.inverse.sequence).toEqual(s)
+  })
+})
+
+describe('trimConnected', () => {
+  it('head trim shrinks from the front: offset up, mediaIn up, duration down', () => {
+    const s = seq([clip('a', 10)], [audioConnected('cc', 'a', 2, 5, 3)])
+    const { next } = trimConnected(s, { clipId: 'cc', edge: 'head', deltaFlicks: 2 * F })
+    const cc = next.connected[0]
+    expect(cc.offsetFlicks).toBe(4 * F)
+    expect(cc.mediaInFlicks).toBe(5 * F)
+    expect(cc.durationFlicks).toBe(3 * F)
+    expect(connectedStartOf(next, 'cc')).toBe(4 * F)
+  })
+
+  it('negative head delta pulls the start before the parent (negative offset = J-cut)', () => {
+    const s = seq([clip('p', 10), clip('a', 10)], [audioConnected('cc', 'a', 0, 10, 5)])
+    const { next, error } = trimConnected(s, { clipId: 'cc', edge: 'head', deltaFlicks: -2 * F })
+    expect(error).toBeUndefined()
+    const cc = next.connected[0]
+    expect(cc.offsetFlicks).toBe(-2 * F)
+    expect(cc.mediaInFlicks).toBe(3 * F)
+    expect(cc.durationFlicks).toBe(12 * F)
+    expect(connectedStartOf(next, 'cc')).toBe(8 * F) // before the parent's start at 10
+  })
+
+  it('head extension clamps at the media start (mediaIn 0)', () => {
+    const s = seq([clip('p', 10), clip('a', 10)], [audioConnected('cc', 'a', 0, 10, 3)])
+    const { next } = trimConnected(s, { clipId: 'cc', edge: 'head', deltaFlicks: -100 * F })
+    const cc = next.connected[0]
+    expect(cc.mediaInFlicks).toBe(0)
+    expect(cc.offsetFlicks).toBe(-3 * F)
+    expect(cc.durationFlicks).toBe(13 * F)
+  })
+
+  it('head extension clamps so the derived absolute start stays >= 0', () => {
+    // plenty of media headroom (mediaIn 50) but only 1 frame of timeline room
+    const s = seq([clip('a', 10)], [audioConnected('cc', 'a', 1, 5, 50)])
+    const { next } = trimConnected(s, { clipId: 'cc', edge: 'head', deltaFlicks: -100 * F })
+    const cc = next.connected[0]
+    expect(cc.offsetFlicks).toBe(0)
+    expect(cc.mediaInFlicks).toBe(49 * F)
+    expect(connectedStartOf(next, 'cc')).toBe(0)
+  })
+
+  it('head shrink clamps at one frame of remaining duration', () => {
+    const s = seq([clip('a', 10)], [audioConnected('cc', 'a', 0, 5, 3)])
+    const { next } = trimConnected(s, { clipId: 'cc', edge: 'head', deltaFlicks: 100 * F })
+    expect(next.connected[0].durationFlicks).toBe(F)
+  })
+
+  it('head extension fully clamped to zero is a clean no-op', () => {
+    // mediaIn 0 at absolute 0: nothing earlier to reveal in either dimension
+    const s = seq([clip('a', 10)], [audioConnected('cc', 'a', 0, 5)])
+    const result = trimConnected(s, { clipId: 'cc', edge: 'head', deltaFlicks: -5 * F })
+    expect(result.next).toBe(s)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('tail extension clamps at the source media end (the L-cut bound)', () => {
+    const s = seq([clip('a', 10)], [audioConnected('cc', 'a', 0, 5, 3)])
+    const { next } = trimConnected(s, { clipId: 'cc', edge: 'tail', deltaFlicks: 100_000 * F })
+    expect(next.connected[0].durationFlicks).toBe(597 * F) // 600 source - 3 mediaIn
+    expect(next.connected[0].mediaInFlicks).toBe(3 * F)
+  })
+
+  it('tail shrink clamps at one frame', () => {
+    const s = seq([clip('a', 10)], [audioConnected('cc', 'a', 0, 5)])
+    const { next } = trimConnected(s, { clipId: 'cc', edge: 'tail', deltaFlicks: -100 * F })
+    expect(next.connected[0].durationFlicks).toBe(F)
+  })
+
+  it('unknown ids (including spine ids) are typed-error no-ops', () => {
+    const s = seq([clip('a', 10)], [audioConnected('cc', 'a', 0, 5)])
+    expect(trimConnected(s, { clipId: 'zzz', edge: 'head', deltaFlicks: F }).error?.code).toBe(
+      'unknown-id'
+    )
+    expect(trimConnected(s, { clipId: 'a', edge: 'tail', deltaFlicks: F }).error?.code).toBe(
+      'unknown-id'
+    )
+  })
+
+  it('returns an inverse that restores the pre-trim sequence', () => {
+    const s = seq([clip('p', 10), clip('a', 10)], [audioConnected('cc', 'a', 0, 10, 5)])
+    const result = trimConnected(s, { clipId: 'cc', edge: 'head', deltaFlicks: -2 * F })
+    expect(result.inverse.type).toBe('restore')
+    expect(result.inverse.sequence).toEqual(s)
+  })
+})
+
 describe('move', () => {
   it('rearranges magnetically: the spine closes and reopens', () => {
     const s = seq([clip('a', 10), clip('b', 10), clip('c', 10)])
@@ -482,6 +674,58 @@ describe('typed-error and no-op edges', () => {
     const second = blade(healed.next, { clipId: 'a', timeFlicks: 3 * F }) // same cut again
     const ids = second.next.spine.map((item) => item.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+describe('setCaptionSettings', () => {
+  const captions = {
+    enabled: true,
+    preset: 'karaoke' as const,
+    font: 'system-ui, sans-serif',
+    sizePx: 56,
+    color: '#ffffff',
+    highlightColor: '#ffd60a',
+    position: 'bottom' as const
+  }
+
+  it('sets sequence-level captions without touching spine/connected', () => {
+    const s = seq([clip('a', 10)], [connected('cc', 'a', 2, 3)])
+    const { next, error } = setCaptionSettings(s, { captions })
+    expect(error).toBeUndefined()
+    expect(next.captions).toEqual(captions)
+    expect(next.spine).toBe(s.spine)
+    expect(next.connected).toBe(s.connected)
+  })
+
+  it('returns a restore inverse (undoable back to no captions)', () => {
+    const s = seq([clip('a', 10)])
+    const result = setCaptionSettings(s, { captions })
+    expect(result.inverse).toEqual({ type: 'restore', sequence: s })
+    expect(result.inverse.sequence.captions).toBeUndefined()
+  })
+
+  it('rejects unknown presets and positions as typed errors', () => {
+    const s = seq([clip('a', 10)])
+    const badPreset = setCaptionSettings(s, {
+      captions: { ...captions, preset: 'bouncy' as never }
+    })
+    expect(badPreset.error?.code).toBe('invalid-target')
+    expect(badPreset.next).toBe(s)
+    const badPosition = setCaptionSettings(s, {
+      captions: { ...captions, position: 'left' as never }
+    })
+    expect(badPosition.error?.code).toBe('invalid-target')
+    expect(badPosition.next).toBe(s)
+  })
+
+  it('rejects non-positive or non-finite sizes', () => {
+    const s = seq([clip('a', 10)])
+    expect(setCaptionSettings(s, { captions: { ...captions, sizePx: 0 } }).error?.code).toBe(
+      'invalid-target'
+    )
+    expect(setCaptionSettings(s, { captions: { ...captions, sizePx: NaN } }).error?.code).toBe(
+      'invalid-target'
+    )
   })
 })
 

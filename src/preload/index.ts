@@ -9,6 +9,7 @@ const api: MagneticApi = {
   importDialog: () => ipcRenderer.invoke(IPC.libraryImportDialog),
   importPaths: (paths) => ipcRenderer.invoke(IPC.libraryImportPaths, { paths }),
   setAssetRating: (assetId, rating) => ipcRenderer.invoke(IPC.assetSetRating, { assetId, rating }),
+  deleteAsset: (assetId) => ipcRenderer.invoke(IPC.assetDelete, { assetId }),
   getProject: () => ipcRenderer.invoke(IPC.projectGet),
   saveSequence: (projectId, sequence) =>
     ipcRenderer.invoke(IPC.projectSaveSequence, { projectId, sequence }),
@@ -21,6 +22,9 @@ const api: MagneticApi = {
   exportFinish: () => ipcRenderer.invoke(IPC.exportFinish),
   exportCancel: () => ipcRenderer.invoke(IPC.exportCancel),
   transcribeAsset: (assetId) => ipcRenderer.invoke(IPC.transcribeRun, { assetId }),
+  captionsPickDestination: (format) => ipcRenderer.invoke(IPC.captionsPickDestination, { format }),
+  captionsWriteSidecar: (destination, content) =>
+    ipcRenderer.invoke(IPC.captionsWriteSidecar, { destination, content }),
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   setSettings: (settings) => ipcRenderer.invoke(IPC.settingsSet, settings),
   relinkAsset: (assetId) => ipcRenderer.invoke(IPC.relinkAsset, { assetId }),

@@ -39,8 +39,11 @@ export function Sidebar({ snapshot, selectedEventId, onSelectEvent }: SidebarPro
             <button
               type="button"
               data-testid={`title-preset-${preset}`}
-              title="Double-click to connect at the playhead"
-              onDoubleClick={() => useTimelineStore.getState().connectTitleAtPlayhead(preset)}
+              title="Click to connect at the playhead"
+              onClick={(event) => {
+                if (event.detail > 1) return
+                useTimelineStore.getState().connectTitleAtPlayhead(preset)
+              }}
             >
               {TITLE_PRESETS[preset].label}
             </button>

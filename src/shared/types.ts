@@ -31,6 +31,19 @@ export interface WaveformInfo {
   peaksPath: string
 }
 
+export interface EnvelopeInfo {
+  /** Path of the RMS-envelope JSON relative to the library root. */
+  envelopePath: string
+}
+
+/** Fixed-window RMS loudness of an asset's audio (silence detection). */
+export interface AudioEnvelope {
+  /** Analysis window size in milliseconds (50 ms). */
+  windowMs: number
+  /** One RMS value in dBFS per window; -100 is the silence floor. */
+  rmsDb: number[]
+}
+
 export interface MediaAsset {
   id: string
   fileName: string
@@ -43,6 +56,10 @@ export interface MediaAsset {
   rating: Rating
   filmstrip?: FilmstripInfo
   waveform?: WaveformInfo
+  /** RMS audio envelope for silence detection (auto silence removal). */
+  envelope?: EnvelopeInfo
+  /** Set when audio-envelope analysis failed; cleared on success. */
+  envelopeError?: string
   /** H.264 preview proxy for codecs WebCodecs cannot decode (phase 7). */
   proxyPath?: string
   /** Whisper transcript JSON, cache-relative (phase 10). */
@@ -97,6 +114,8 @@ export interface AssetView extends Omit<MediaAsset, 'filmstrip' | 'waveform'> {
   proxyUrl?: string
   /** mfile:// URL of the transcript JSON, when transcription has finished. */
   transcriptUrl?: string
+  /** mfile:// URL of the RMS-envelope JSON, when envelope analysis has finished. */
+  envelopeUrl?: string
   /** True when the imported media file is gone from disk (needs relinking). */
   missing: boolean
 }

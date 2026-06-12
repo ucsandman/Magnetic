@@ -1,5 +1,6 @@
 import { FLICKS_PER_SECOND, flicksToTimecode } from '../../shared/timecode'
 import type { Sequence } from '../../shared/timeline/model'
+import { keyframeMarkerTimes } from '../../shared/timeline/fx-eval'
 import { spineStartIndex } from '../../shared/timeline/magnetic'
 import { editPointIndexOfCut, transitionsOf } from '../../shared/timeline/transitions'
 import type { Selection } from '../../shared/timeline/select'
@@ -40,6 +41,9 @@ export interface DragGhost {
   clipId: string
   /** Frame-delta tooltip, e.g. "-12f". */
   label?: string
+  /** Caret vertical extent; defaults to the spine row (connected trims pass their lane). */
+  y?: number
+  h?: number
 }
 
 export interface HoverEdge {
@@ -58,6 +62,8 @@ export interface RenderState {
   sequence: Sequence
   selection: Selection
   snapshot: LibrarySnapshot | null
+  /** Candidate dead-air ranges previewed as translucent bands (SilencePanel). */
+  silenceRanges: { fromFlicks: number; toFlicks: number }[] | null
   playheadFlicks: number
   zoomPxPerSec: number
   scrollX: number
@@ -128,7 +134,8 @@ const COLORS = {
   snapGuide: '#ffd60a',
   skimmer: '#ff453a',
   playhead: '#f2f2f4',
-  waveform: '#9fe3bd'
+  waveform: '#9fe3bd',
+  keyframe: '#e8e8ee'
 }
 
 function roundedRectPath(
@@ -388,6 +395,56 @@ export function transitionBadgeRects(state: RenderState): TransitionBadgeRect[] 
   return rects
 }
 
+/** Clips narrower than this skip keyframe markers (cheap hot-path guard). */
+const KF_MIN_CLIP_PX = 20
+const KF_DIAMOND_R = 3
+
+/** Keyframe media-times per animated clip; null when nothing is keyframed. */
+function keyframeTimesByClip(sequence: Sequence): Map<string, number[]> | null {
+  let map: Map<string, number[]> | null = null
+  for (const item of sequence.spine) {
+    if (item.kind !== 'clip') continue
+    const times = keyframeMarkerTimes(item.fx)
+    if (times.length > 0) (map ??= new Map()).set(item.id, times)
+  }
+  for (const cc of sequence.connected) {
+    const times = keyframeMarkerTimes(cc.fx)
+    if (times.length > 0) (map ??= new Map()).set(cc.id, times)
+  }
+  return map
+}
+
+/** Small diamonds along the bottom edge of keyframed clips (display-only in v1). */
+function drawKeyframeDiamonds(
+  ctx: CanvasRenderingContext2D,
+  state: RenderState,
+  rects: ClipRect[]
+): void {
+  const byClip = keyframeTimesByClip(state.sequence)
+  if (byClip === null) return
+  ctx.fillStyle = COLORS.keyframe
+  ctx.strokeStyle = COLORS.clipBorder
+  ctx.lineWidth = 1
+  for (const rect of rects) {
+    if (rect.isGap || rect.w < KF_MIN_CLIP_PX) continue
+    const times = byClip.get(rect.id)
+    if (times === undefined) continue
+    const y = rect.y + rect.h - KF_DIAMOND_R - 2
+    for (const at of times) {
+      const x = rect.x + ((at - rect.mediaInFlicks) / FLICKS_PER_SECOND) * state.zoomPxPerSec
+      if (x < rect.x + KF_DIAMOND_R || x > rect.x + rect.w - KF_DIAMOND_R) continue
+      ctx.beginPath()
+      ctx.moveTo(x, y - KF_DIAMOND_R)
+      ctx.lineTo(x + KF_DIAMOND_R, y)
+      ctx.lineTo(x, y + KF_DIAMOND_R)
+      ctx.lineTo(x - KF_DIAMOND_R, y)
+      ctx.closePath()
+      ctx.fill()
+      ctx.stroke()
+    }
+  }
+}
+
 const KIND_LABEL: Record<string, string> = {
   dissolve: 'X',
   wipeL: 'W◀',
@@ -461,6 +518,8 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
     if (state.selection.clipIds.includes(rect.id)) drawSelection(ctx, rect)
   }
 
+  drawKeyframeDiamonds(ctx, state, rects)
+
   drawTransitionBadges(ctx, state)
 
   // selection time-range band (transcript word selection)
@@ -472,6 +531,20 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
     ctx.strokeStyle = COLORS.selection
     ctx.lineWidth = 1
     ctx.strokeRect(x1 + 0.5, RULER_H + 0.5, Math.max(1, x2 - x1), state.height - RULER_H - 1)
+  }
+
+  // silence-removal candidate bands (same band math as the selection range)
+  if (state.silenceRanges !== null) {
+    for (const range of state.silenceRanges) {
+      const x1 = timeToX(state, range.fromFlicks)
+      const x2 = timeToX(state, range.toFlicks)
+      if (x2 < 0 || x1 > state.width) continue
+      ctx.fillStyle = '#ff453a2b'
+      ctx.fillRect(x1, RULER_H, Math.max(1, x2 - x1), state.height - RULER_H)
+      ctx.strokeStyle = '#ff453a99'
+      ctx.lineWidth = 1
+      ctx.strokeRect(x1 + 0.5, RULER_H + 0.5, Math.max(1, x2 - x1), state.height - RULER_H - 1)
+    }
   }
 
   // hovered trim edge / edit point: yellow bracket affordance
@@ -500,8 +573,10 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
       ctx.lineWidth = 2
       ctx.setLineDash(state.ghost.kind === 'move' ? [] : [4, 3])
       ctx.beginPath()
-      ctx.moveTo(state.ghost.x + 0.5, layout.spineY - 4)
-      ctx.lineTo(state.ghost.x + 0.5, layout.spineY + SPINE_H + 4)
+      const caretY = state.ghost.y ?? layout.spineY - 4
+      const caretH = state.ghost.h ?? SPINE_H + 8
+      ctx.moveTo(state.ghost.x + 0.5, caretY)
+      ctx.lineTo(state.ghost.x + 0.5, caretY + caretH)
       ctx.stroke()
       ctx.setLineDash([])
     }

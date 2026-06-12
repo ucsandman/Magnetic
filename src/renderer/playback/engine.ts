@@ -2,11 +2,12 @@ import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import { spineStartIndex } from '../../shared/timeline/magnetic'
 import {
   sequenceDuration,
+  type CaptionSettings,
   type ClipFx,
   type Sequence,
   type TitleData
 } from '../../shared/timeline/model'
-import { DEFAULT_FX } from '../../shared/timeline/ops'
+import { evaluateFxAt } from '../../shared/timeline/fx-eval'
 import {
   transitionAt,
   transitionsOf,
@@ -14,6 +15,10 @@ import {
   type ActiveTransition
 } from '../../shared/timeline/transitions'
 import type { AssetView, LibrarySnapshot } from '../../shared/types'
+import { activeCueAt, buildCues, type CaptionCue } from '../captions/cues'
+import { renderCaption } from '../captions/render'
+import { ensureTranscripts, transcriptCacheVersion } from '../transcript/cache'
+import { projectTranscript } from '../transcript/projection'
 import { renderTitle } from '../titles/render'
 import { AudioGraphController } from './audio-graph'
 import { Compositor, SEQUENCE_H, SEQUENCE_W, type CompositedLayer } from './compositor/compositor'
@@ -202,6 +207,7 @@ export class PlaybackEngine {
   attach(canvas: HTMLCanvasElement): void {
     this.compositor?.dispose()
     this.compositor = new Compositor(canvas)
+    this.captionCache = null // fresh compositor has no '__captions__' texture yet
   }
 
   detach(): void {
@@ -315,7 +321,10 @@ export class PlaybackEngine {
       entry = { hash, canvas: renderTitle(titleData), uploadedHash: null }
       this.titleCache.set(item.clipId, entry)
     }
-    const baseFx = { ...DEFAULT_FX, ...(item.fx ?? {}) }
+    const baseFx = evaluateFxAt(
+      item.fx,
+      (item.mediaInSec + (tSec - item.startSec)) * FLICKS_PER_SECOND
+    )
     let fade = 1
     if (titleData.preset === 'bumper') {
       fade = Math.max(0, Math.min(1, (tSec - item.startSec) / 0.5, (item.endSec - tSec) / 0.5))
@@ -332,12 +341,73 @@ export class PlaybackEngine {
 
   private sequence: Sequence | null = null
 
+  /** Active caption state for the current play/still/export pass (null = off). */
+  private captionState: { cues: CaptionCue[]; settings: CaptionSettings } | null = null
+  /** Cues memoized per (sequence reference, transcript cache version). */
+  private cueMemo: { sequence: Sequence; version: number; cues: CaptionCue[] } | null = null
+  private captionCache: { key: string; canvas: HTMLCanvasElement; uploaded: boolean } | null = null
+
+  /**
+   * Derive the cue list from the transcript projection when captions are
+   * enabled. Awaits the shared transcript cache (local file fetches); assets
+   * whose transcription has not finished yet simply contribute no cues.
+   */
+  private async prepareCaptions(sequence: Sequence, snapshot: LibrarySnapshot): Promise<void> {
+    const settings = sequence.captions
+    if (settings === undefined || !settings.enabled) {
+      this.captionState = null
+      return
+    }
+    const transcripts = await ensureTranscripts(sequence, snapshot)
+    const version = transcriptCacheVersion()
+    if (
+      this.cueMemo === null ||
+      this.cueMemo.sequence !== sequence ||
+      this.cueMemo.version !== version
+    ) {
+      this.cueMemo = {
+        sequence,
+        version,
+        cues: buildCues(projectTranscript(sequence, transcripts))
+      }
+    }
+    this.captionState = { cues: this.cueMemo.cues, settings }
+  }
+
+  /** Caption layer for the cue active at tSec, painted last (above titles). */
+  private captionLayer(tSec: number): CompositedLayer | null {
+    if (this.captionState === null) return null
+    const { cues, settings } = this.captionState
+    const active = activeCueAt(cues, tSec * FLICKS_PER_SECOND)
+    if (active === null) return null
+    const cue = cues[active.cueIndex]
+    // block ignores the active word — avoid re-rasterizing 3×/sec for nothing
+    const wordKey = settings.preset === 'block' ? 0 : active.wordIndex
+    const key = `${cue.startFlicks}|${cue.text}|${wordKey}|${JSON.stringify(settings)}`
+    if (this.captionCache === null || this.captionCache.key !== key) {
+      this.captionCache = {
+        key,
+        canvas: renderCaption(cue, settings, active.wordIndex),
+        uploaded: false
+      }
+    }
+    const layer: CompositedLayer = {
+      slot: '__captions__',
+      frame: null,
+      fx: undefined,
+      image: this.captionCache.uploaded ? undefined : this.captionCache.canvas
+    }
+    this.captionCache.uploaded = true
+    return layer
+  }
+
   async play(sequence: Sequence, snapshot: LibrarySnapshot, fromFlicks: number): Promise<void> {
     if (this.exporting) return
     this.pause()
     this.stillToken += 1
     const audio = this.ensureAudio()
     if (audio.ctx.state === 'suspended') await audio.ctx.resume()
+    await this.prepareCaptions(sequence, snapshot)
     this.sequence = sequence
     this.items = this.buildItems(sequence, snapshot)
     this.fromSec = fromFlicks / FLICKS_PER_SECOND
@@ -438,13 +508,18 @@ export class PlaybackEngine {
         continue
       }
       if (!frames.has(item.clipId)) continue
+      // keyframed params evaluate at this frame's MEDIA time (fx-eval.ts)
+      const fx = evaluateFxAt(
+        item.fx,
+        (item.mediaInSec + (tSec - item.startSec)) * FLICKS_PER_SECOND
+      )
       if (activeTransition !== null && item.layer === 0) {
         if (item.clipId === activeTransition.bClipId) continue // folded into the blend
         if (item.clipId === activeTransition.aClipId) {
           layers.push({
             slot: item.clipId,
             frame: frames.get(item.clipId)!,
-            fx: item.fx,
+            fx,
             blend: {
               slotB: activeTransition.bClipId,
               frameB: frames.get(activeTransition.bClipId) ?? null,
@@ -455,8 +530,11 @@ export class PlaybackEngine {
           continue
         }
       }
-      layers.push({ slot: item.clipId, frame: frames.get(item.clipId)!, fx: item.fx })
+      layers.push({ slot: item.clipId, frame: frames.get(item.clipId)!, fx })
     }
+    // captions paint last — above the spine, connected lanes, and titles
+    const caption = this.captionLayer(tSec)
+    if (caption !== null) layers.push(caption)
     return layers
   }
 
@@ -479,6 +557,7 @@ export class PlaybackEngine {
     this.stillToken += 1
     this.exporting = true
     this.sequence = sequence
+    await this.prepareCaptions(sequence, snapshot)
     const items = this.buildItems(sequence, snapshot)
     const pumps = new Map<string, OfflinePump>()
     try {
@@ -548,6 +627,8 @@ export class PlaybackEngine {
     if (this.playing || this.exporting || this.compositor === null) return
     const token = ++this.stillToken
     const tSec = timeFlicks / FLICKS_PER_SECOND
+    await this.prepareCaptions(sequence, snapshot)
+    if (token !== this.stillToken) return // superseded while awaiting transcripts
     const items = this.buildItems(sequence, snapshot).filter(
       (item) => tSec >= item.startSec - item.inHalfSec && tSec < item.endSec + item.outHalfSec
     )

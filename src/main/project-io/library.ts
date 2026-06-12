@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readdirSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { app } from 'electron'
 import type { Event, Library, MediaAsset, Project, Rating, Sequence } from '../../shared/types'
+import { rippleDelete } from '../../shared/timeline/ops'
 import { readJson, writeJsonAtomic } from './atomic'
 
 interface LibraryJson {
@@ -134,6 +135,26 @@ export class LibraryStore {
     this.updateAsset(assetId, { rating })
   }
 
+  deleteAsset(assetId: string): void {
+    const asset = this.data.assets[assetId]
+    if (asset === undefined) throw new Error(`unknown asset: ${assetId}`)
+
+    delete this.data.assets[assetId]
+    this.events = this.events.map((event) => ({
+      ...event,
+      assetIds: event.assetIds.filter((id) => id !== assetId)
+    }))
+    this.projects = this.projects.map((project) => ({
+      ...project,
+      sequence: deleteAssetUses(project.sequence, assetId)
+    }))
+    this.scheduleSave()
+    this.notify()
+    // Last and best-effort: a locked media file (Windows EBUSY/EPERM while an
+    // ffmpeg job still reads it) must not abort the logical delete above.
+    this.deleteAssetFiles(asset)
+  }
+
   /** The library's single default project, created (and persisted) on first use. */
   getOrCreateDefaultProject(): Project {
     if (this.projects.length === 0) {
@@ -186,6 +207,39 @@ export class LibraryStore {
       writeJsonAtomic(join(this.root, 'projects', `${project.id}.json`), project)
     }
   }
+
+  private deleteAssetFiles(asset: MediaAsset): void {
+    const relPaths = [
+      asset.libraryRelPath,
+      asset.filmstrip?.stripPath,
+      asset.waveform?.peaksPath,
+      asset.envelope?.envelopePath,
+      asset.proxyPath,
+      asset.transcriptPath,
+      join('cache', 'pcm', `${asset.id}.wav`),
+      join('cache', 'proxy', `${asset.id}.mp4`)
+    ].filter((path): path is string => path !== undefined)
+
+    for (const relPath of relPaths) {
+      try {
+        rmSync(join(this.root, relPath), { force: true })
+      } catch (error) {
+        console.error(`delete asset: could not remove ${relPath}:`, error)
+      }
+    }
+  }
+}
+
+function deleteAssetUses(sequence: Sequence, assetId: string): Sequence {
+  const spineIds = sequence.spine
+    .filter((item) => item.kind === 'clip' && item.assetId === assetId)
+    .map((item) => item.id)
+  const withoutSpine =
+    spineIds.length === 0 ? sequence : rippleDelete(sequence, { ids: spineIds }).next
+  const connected = withoutSpine.connected.filter((clip) => clip.assetId !== assetId)
+  return connected.length === withoutSpine.connected.length
+    ? withoutSpine
+    : { ...withoutSpine, connected }
 }
 
 function loadDir<T>(dir: string): T[] {

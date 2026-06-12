@@ -33,6 +33,24 @@ const rationalSchema = z.object({
   den: z.number().int().positive()
 })
 
+const keyframeSchema = z.object({
+  atMediaFlicks: z.number(),
+  value: z.number(),
+  ease: z.enum(['linear', 'easeInOut'])
+})
+
+const animatableParamSchema = z.enum([
+  'posX',
+  'posY',
+  'scale',
+  'rotation',
+  'opacity',
+  'exposure',
+  'contrast',
+  'saturation',
+  'temperature'
+])
+
 const clipFxSchema = z.object({
   posX: z.number(),
   posY: z.number(),
@@ -47,7 +65,9 @@ const clipFxSchema = z.object({
   fadeInFlicks: z.number().default(0),
   fadeOutFlicks: z.number().default(0),
   volumeDb: z.number().default(0),
-  pan: z.number().default(0)
+  pan: z.number().default(0),
+  // keyframe animation tracks (z.object strips unknown keys, so kf must be declared)
+  kf: z.partialRecord(animatableParamSchema, z.array(keyframeSchema)).optional()
 })
 
 const titleDataSchema = z.object({
@@ -74,7 +94,9 @@ const spineClipSchema = z.object({
   mediaInFlicks: z.number().nonnegative(),
   durationFlicks: z.number().positive(),
   sourceDurationFlicks: z.number().positive(),
-  fx: clipFxSchema.optional()
+  fx: clipFxSchema.optional(),
+  /** Detach Audio: video-only spine clip; its audio lives in a lane −1 connected clip. */
+  audioDisabled: z.boolean().optional()
 })
 
 const gapClipSchema = z.object({
@@ -93,7 +115,18 @@ const connectedClipSchema = z.object({
   durationFlicks: z.number().positive(),
   sourceDurationFlicks: z.number().positive(),
   fx: clipFxSchema.optional(),
-  titleData: titleDataSchema.optional()
+  titleData: titleDataSchema.optional(),
+  audioDisabled: z.boolean().optional()
+})
+
+const captionSettingsSchema = z.object({
+  enabled: z.boolean(),
+  preset: z.enum(['pop-in', 'karaoke', 'block']),
+  font: z.string(),
+  sizePx: z.number().positive(),
+  color: z.string(),
+  highlightColor: z.string(),
+  position: z.enum(['bottom', 'middle', 'top'])
 })
 
 export const sequenceSchema = z.object({
@@ -101,7 +134,10 @@ export const sequenceSchema = z.object({
   fps: rationalSchema,
   spine: z.array(z.discriminatedUnion('kind', [spineClipSchema, gapClipSchema])),
   connected: z.array(connectedClipSchema),
-  transitions: z.array(transitionSchema).optional()
+  transitions: z.array(transitionSchema).optional(),
+  // z.object strips unknown keys on the saveSequence round-trip, so every
+  // sequence-level field MUST be declared here or it is silently lost
+  captions: captionSettingsSchema.optional()
 })
 
 export const saveSequencePayloadSchema = z.object({
@@ -111,6 +147,15 @@ export const saveSequencePayloadSchema = z.object({
 export type SaveSequencePayload = z.infer<typeof saveSequencePayloadSchema>
 
 export const assetIdPayloadSchema = z.object({ assetId: z.string().min(1) })
+
+export const captionsPickDestinationPayloadSchema = z.object({
+  format: z.enum(['srt', 'vtt'])
+})
+
+export const captionsWriteSidecarPayloadSchema = z.object({
+  destination: z.string().min(1),
+  content: z.string()
+})
 
 export interface MemoryUsage {
   rss: number
@@ -127,6 +172,7 @@ export interface MagneticApi {
   importDialog(): Promise<import('./types').ImportResult>
   importPaths(paths: string[]): Promise<import('./types').ImportResult>
   setAssetRating(assetId: string, rating: z.infer<typeof ratingSchema>): Promise<void>
+  deleteAsset(assetId: string): Promise<void>
   /** Default project (created on first call), including its persisted sequence. */
   getProject(): Promise<import('./types').Project>
   saveSequence(projectId: string, sequence: import('./types').Sequence): Promise<void>
@@ -153,6 +199,10 @@ export interface MagneticApi {
   exportCancel(): Promise<void>
   /** Queue (or re-queue) transcription of an asset with audio. */
   transcribeAsset(assetId: string): Promise<void>
+  /** Native save dialog for a caption sidecar; null when cancelled. */
+  captionsPickDestination(format: 'srt' | 'vtt'): Promise<string | null>
+  /** Write a serialized SRT/VTT sidecar to the given path. */
+  captionsWriteSidecar(destination: string, content: string): Promise<void>
   getSettings(): Promise<{ autoTranscribe: boolean }>
   setSettings(settings: { autoTranscribe: boolean }): Promise<void>
   /** Relink a missing asset via the OS file picker (duration must match). */

@@ -54,8 +54,12 @@ export function buildAppMenu(actions: MenuActions): void {
         },
         { type: 'separator' },
         { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
+        // Keep the menu items (text-field copy/paste on click) but do NOT
+        // register their accelerators: Ctrl+C/Ctrl+V must reach the renderer,
+        // where Chromium handles text fields natively and the shortcut
+        // registry handles timeline clip copy/paste (TimelinePanel.tsx).
+        { role: 'copy', registerAccelerator: false },
+        { role: 'paste', registerAccelerator: false },
         { role: 'selectAll' }
       ]
     },

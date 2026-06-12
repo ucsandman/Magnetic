@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Transcript } from '../../shared/types'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
+import { ensureTranscripts } from './cache'
 import { fillerRanges, projectTranscript, type SequenceWord } from './projection'
 
 /**
@@ -20,32 +21,18 @@ export function TranscriptPanel(): ReactNode {
   const [searchCursor, setSearchCursor] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // fetch transcripts for every asset the sequence references (cache by url)
+  // fetch transcripts for every asset the sequence references (shared cache,
+  // also warmed for the playback engine's burned-in captions)
   useEffect(() => {
     if (sequence === null || snapshot === null) return
-    const wanted = new Set<string>()
-    for (const item of sequence.spine) if (item.kind === 'clip') wanted.add(item.assetId)
-    for (const cc of sequence.connected) if (cc.titleData === undefined) wanted.add(cc.assetId)
     let disposed = false
-    for (const assetId of wanted) {
-      const url = snapshot.assets[assetId]?.transcriptUrl
-      if (url === undefined || transcripts.has(assetId)) continue
-      void fetch(url)
-        .then((response) => response.json())
-        .then((data: Transcript) => {
-          if (disposed) return
-          setTranscripts((current) => {
-            const next = new Map(current)
-            next.set(assetId, data)
-            return next
-          })
-        })
-        .catch(() => undefined)
-    }
+    void ensureTranscripts(sequence, snapshot).then((map) => {
+      if (!disposed) setTranscripts(map)
+    })
     return () => {
       disposed = true
     }
-  }, [sequence, snapshot, transcripts])
+  }, [sequence, snapshot])
 
   const words = useMemo(
     () => (sequence === null ? [] : projectTranscript(sequence, transcripts)),

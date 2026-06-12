@@ -10,6 +10,7 @@ export const IPC = {
   libraryImportPaths: 'library:importPaths',
   libraryImportDialog: 'library:importDialog',
   assetSetRating: 'asset:setRating',
+  assetDelete: 'asset:delete',
   projectGet: 'project:get',
   projectSaveSequence: 'project:saveSequence',
   mediaEnsurePcm: 'media:ensurePcm',
@@ -21,6 +22,8 @@ export const IPC = {
   exportFinish: 'export:finish',
   exportCancel: 'export:cancel',
   transcribeRun: 'transcribe:run',
+  captionsPickDestination: 'captions:pickDestination',
+  captionsWriteSidecar: 'captions:writeSidecar',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   /** main -> renderer push: full library snapshot after any change */

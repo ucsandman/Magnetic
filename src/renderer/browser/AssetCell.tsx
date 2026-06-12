@@ -8,11 +8,18 @@ interface AssetCellProps {
   selected: boolean
   onSelect(event: MouseEvent): void
   onOpen(): void
+  onContextMenu(event: MouseEvent): void
 }
 
 const RATING_GLYPH: Record<string, string> = { favorite: '★', rejected: '✕' }
 
-export function AssetCell({ asset, selected, onSelect, onOpen }: AssetCellProps): ReactNode {
+export function AssetCell({
+  asset,
+  selected,
+  onSelect,
+  onOpen,
+  onContextMenu
+}: AssetCellProps): ReactNode {
   const [frameIndex, setFrameIndex] = useState(0)
   const strip = asset.filmstrip
   const isVideo = asset.video !== undefined
@@ -37,11 +44,8 @@ export function AssetCell({ asset, selected, onSelect, onOpen }: AssetCellProps)
       }}
       onClick={onSelect}
       onDoubleClick={onOpen}
-      onContextMenu={(event) => {
-        event.preventDefault()
-        if (asset.audio !== undefined) void window.api.transcribeAsset(asset.id)
-      }}
-      title={asset.audio !== undefined ? 'Right-click to transcribe' : undefined}
+      onContextMenu={onContextMenu}
+      title="Right-click for options"
     >
       <div
         className={`asset-media ${ready ? '' : 'shimmer'}`}

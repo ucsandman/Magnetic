@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
 import { buildAppMenu, watchEditState } from './menu'
 import { registerExportIpc } from './export/encoder'
+import { registerCaptionsIpc } from './captions'
 import { registerMfileScheme, installMfileHandler } from './protocol'
 import {
   buildSnapshot,
@@ -15,6 +16,7 @@ import {
   importAndProcess,
   importViaDialog,
   initAppState,
+  initMediaServer,
   relinkAsset,
   relinkViaDialog
 } from './app-state'
@@ -55,7 +57,7 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.practicalsystems.magnetic')
   nativeTheme.themeSource = 'dark'
 
@@ -64,12 +66,14 @@ app.whenReady().then(() => {
   })
 
   initAppState()
+  await initMediaServer()
   installMfileHandler(() => [getStore().root])
   registerIpc({
     getSnapshot: () => buildSnapshot(),
     importPaths: (paths) => importAndProcess(paths),
     importDialog: () => importViaDialog(),
     setRating: (assetId, rating) => getStore().setRating(assetId, rating),
+    deleteAsset: (assetId) => getStore().deleteAsset(assetId),
     getProject: () => getStore().getOrCreateDefaultProject(),
     saveSequence: (projectId, sequence) => getStore().saveProjectSequence(projectId, sequence),
     ensurePcm: (assetId) => ensurePcmUrl(assetId),
@@ -85,6 +89,7 @@ app.whenReady().then(() => {
   buildAppMenu({ onImportMedia: () => void importViaDialog() })
   watchEditState()
   registerExportIpc()
+  registerCaptionsIpc()
   createWindow()
 
   app.on('activate', () => {

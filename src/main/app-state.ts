@@ -8,9 +8,11 @@ import { importPaths } from './project-io/import'
 import { JobQueue } from './jobs/queue'
 import { generateFilmstrip } from './jobs/filmstrip'
 import { generateWaveform } from './jobs/waveform'
+import { generateAudioEnvelope } from './jobs/audio-envelope'
 import { ensurePcm, ensureProxy } from './jobs/media-derivatives'
 import { generateTranscript } from './jobs/transcribe'
 import { ffmpegPath, whisperModelPath, whisperPath } from './binaries'
+import { startMediaServer, type MediaServer } from './media-server'
 import { getAutoTranscribe } from './project-io/library'
 
 /**
@@ -46,6 +48,20 @@ export function pathToMfileUrl(absolutePath: string): string {
   return `mfile:///${segments.map(encodeURIComponent).join('/')}`
 }
 
+// Video/audio files are served over loopback HTTP, not mfile — see
+// media-server.ts for why <video> cannot play multi-GB files via a custom
+// protocol. Filmstrips, peaks and transcripts stay on mfile.
+let mediaServer: MediaServer | null = null
+
+export async function initMediaServer(): Promise<void> {
+  mediaServer = await startMediaServer(() => [getStore().root])
+}
+
+function mediaHttpUrl(absolutePath: string): string {
+  if (mediaServer === null) throw new Error('media server not started')
+  return mediaServer.urlForPath(absolutePath)
+}
+
 export function buildSnapshot(): LibrarySnapshot {
   const lib = getStore()
   const assets: Record<string, AssetView> = {}
@@ -53,7 +69,7 @@ export function buildSnapshot(): LibrarySnapshot {
     const view: AssetView = {
       ...asset,
       missing: !existsSync(join(lib.root, asset.libraryRelPath)),
-      mediaUrl: pathToMfileUrl(join(lib.root, asset.libraryRelPath)),
+      mediaUrl: mediaHttpUrl(join(lib.root, asset.libraryRelPath)),
       filmstrip:
         asset.filmstrip === undefined
           ? undefined
@@ -63,11 +79,15 @@ export function buildSnapshot(): LibrarySnapshot {
           ? undefined
           : { ...asset.waveform, url: pathToMfileUrl(join(lib.root, asset.waveform.peaksPath)) },
       proxyUrl:
-        asset.proxyPath === undefined ? undefined : pathToMfileUrl(join(lib.root, asset.proxyPath)),
+        asset.proxyPath === undefined ? undefined : mediaHttpUrl(join(lib.root, asset.proxyPath)),
       transcriptUrl:
         asset.transcriptPath === undefined
           ? undefined
-          : pathToMfileUrl(join(lib.root, asset.transcriptPath))
+          : pathToMfileUrl(join(lib.root, asset.transcriptPath)),
+      envelopeUrl:
+        asset.envelope === undefined
+          ? undefined
+          : pathToMfileUrl(join(lib.root, asset.envelope.envelopePath))
     }
     assets[id] = view
   }
@@ -144,7 +164,7 @@ export async function ensureProxyUrl(assetId: string): Promise<string> {
   if (asset.proxyPath !== relPath) {
     lib.updateAsset(assetId, { proxyPath: relPath })
   }
-  return pathToMfileUrl(join(lib.root, relPath))
+  return mediaHttpUrl(join(lib.root, relPath))
 }
 
 function broadcastSnapshot(): void {
@@ -172,6 +192,24 @@ function enqueueDerivativeJobs(asset: MediaAsset): void {
       run: async () => {
         const waveform = await generateWaveform(lib.root, asset)
         lib.updateAsset(asset.id, { waveform })
+      }
+    })
+  }
+  if (asset.audio !== undefined && asset.envelope === undefined) {
+    queue.enqueue({
+      label: `envelope:${asset.fileName}`,
+      run: async () => {
+        try {
+          const envelope = await generateAudioEnvelope(lib.root, asset)
+          lib.updateAsset(asset.id, { envelope, envelopeError: undefined })
+        } catch (error) {
+          // Persist the failure so the Silence panel can say "analysis failed"
+          // instead of the misleading "no dead air detected" empty state.
+          lib.updateAsset(asset.id, {
+            envelopeError: error instanceof Error ? error.message : String(error)
+          })
+          throw error
+        }
       }
     })
   }

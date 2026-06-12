@@ -16,12 +16,17 @@ A Final Cut Pro-style non-linear video editor for Windows, built with Electron, 
 - **Magnetic timeline** — spine + connected clips, lanes, gap clips, snapping, zoom, skimming; clips never overlap, edits ripple
 - **Edit grammar** — append `E`, insert `W`, connect `Q`, overwrite `D`, ripple delete, lift; select `A` / blade `B` / trim `T` tools; trim ripples, edit points roll, clip bodies slip; drag-rearrange with magnetic collision; full undo/redo
 - **Sequence playback** — WebCodecs decode → WebGL2 compositor; per-clip transforms (position/scale/rotation/opacity); AudioContext-clocked A/V sync
+- **Keyframe animation** — animate transform, opacity, and color params from the Inspector (linear/smooth easing); diamonds on timeline clips; WYSIWYG in export
+- **Clipboard** — copy/paste/duplicate clips (`Ctrl+C/V/D`), paste-connect (`Ctrl+Shift+V`), paste attributes incl. keyframes (`Ctrl+Alt+V`); one undo step per paste
 - **Audio** — mixing, per-clip volume/pan, fade in/out
+- **Detach audio & split edits** — pull audio onto its own lane and trim its edges independently for J-cuts and L-cuts
 - **Transitions** — cross dissolve, wipe left/right, fade-to-black
 - **Titles** — free text + 3 presets, rendered as live canvas layers
 - **Color board** — exposure / contrast / saturation / temperature per clip
 - **Export** — H.264/AAC MP4 at 1080p/720p/source via bundled ffmpeg, with progress and cancel; WYSIWYG (exported pixels match the live compositor)
 - **Edit-by-transcript** — local whisper.cpp transcription, word-click seek, select-text-and-delete-to-cut, filler-word removal, transcript search
+- **Auto silence removal** — background audio analysis, tunable dead-air detection with timeline preview, one-click jump-cuts, one-step undo
+- **Captions** — burned-in captions derived live from the transcript (pop-in / karaoke / block presets); SRT/VTT sidecar export
 - **Missing-media relink** — assets whose file vanished get an alert badge; relink accepts a replacement whose duration matches ±1 frame
 - **Keyboard-shortcut overlay** — `Shift+?` lists every live binding
 - **NSIS installer** — `npm run package`, binaries bundled
@@ -148,7 +153,7 @@ flowchart TB
 - `scripts/` — binary fetcher, fixture generator, shortcut-table dump
 - `e2e/` — Playwright Electron tests; `resources/bin/` and `fixtures/` are gitignored artifacts
 
-Renderer security: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, CSP set in `index.html`, no remote URLs; media is served over a custom `mfile://` protocol scoped to the library. Ctrl+Shift+D toggles a diagnostics overlay that spawn-verifies the bundled binaries.
+Renderer security: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, CSP set in `index.html`, no remote URLs; library files are served over a custom `mfile://` protocol scoped to the library, except video/audio playback, which goes through a token-guarded loopback HTTP server (`src/main/media-server.ts`) because Chromium's media pipeline cannot seek large files through Electron custom-protocol responses. Ctrl+Shift+D toggles a diagnostics overlay that spawn-verifies the bundled binaries.
 
 ## Screenshots
 

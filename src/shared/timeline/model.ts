@@ -9,6 +9,29 @@ import type { Rational } from '../timecode'
  * spine is contiguous and overlap-free by construction.
  */
 
+/** The nine video/color scalars that can carry keyframe animation. */
+export type AnimatableParam =
+  | 'posX'
+  | 'posY'
+  | 'scale'
+  | 'rotation'
+  | 'opacity'
+  | 'exposure'
+  | 'contrast'
+  | 'saturation'
+  | 'temperature'
+
+/**
+ * One animation point. Anchored in MEDIA time (same basis as mediaInFlicks),
+ * so blade/trim/ripple/rearrange need no keyframe fixups — each half of a cut
+ * evaluates only its own media window.
+ */
+export interface Keyframe {
+  atMediaFlicks: number
+  value: number
+  ease: 'linear' | 'easeInOut'
+}
+
 /** Per-clip effect parameters (phases 7–8): transform, color board, audio. */
 export interface ClipFx {
   posX: number
@@ -34,6 +57,8 @@ export interface ClipFx {
   volumeDb: number
   /** −1 left .. +1 right. */
   pan: number
+  /** Optional keyframe tracks per animatable param, sorted by atMediaFlicks. */
+  kf?: Partial<Record<AnimatableParam, Keyframe[]>>
 }
 
 export interface Clip {
@@ -45,6 +70,8 @@ export interface Clip {
   /** Full duration of the source media — trims/slips clamp against this. */
   sourceDurationFlicks: number
   fx?: ClipFx
+  /** True after Detach Audio: the clip renders video only (audio lives in a lane −1 connected clip). */
+  audioDisabled?: boolean
 }
 
 export interface GapClip {
@@ -68,6 +95,8 @@ export interface ConnectedClip {
   sourceDurationFlicks: number
   fx?: ClipFx
   titleData?: TitleData
+  /** Mute this clip's audio (e.g. a paste-connected copy of a detached-audio spine clip). */
+  audioDisabled?: boolean
 }
 
 export type TransitionKind = 'dissolve' | 'wipeL' | 'wipeR' | 'fadeBlack'
@@ -95,12 +124,28 @@ export interface TitleData {
   preset: 'basic' | 'lowerThird' | 'bumper'
 }
 
+/**
+ * Sequence-level burned-in caption settings (phase: captions). Captions are
+ * NEVER clips — cues derive live from the transcript projection, so every
+ * edit re-derives them for free.
+ */
+export interface CaptionSettings {
+  enabled: boolean
+  preset: 'pop-in' | 'karaoke' | 'block'
+  font: string
+  sizePx: number
+  color: string
+  highlightColor: string
+  position: 'bottom' | 'middle' | 'top'
+}
+
 export interface Sequence {
   id: string
   fps: Rational
   spine: SpineItem[]
   connected: ConnectedClip[]
   transitions?: Transition[]
+  captions?: CaptionSettings
 }
 
 export function emptySequence(id: string, fps: Rational): Sequence {

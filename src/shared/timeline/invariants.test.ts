@@ -8,6 +8,7 @@ import {
   append,
   blade,
   connectAt,
+  detachAudio,
   insertAt,
   liftDelete,
   move,
@@ -16,6 +17,7 @@ import {
   rippleDeleteRange,
   roll,
   slip,
+  trimConnected,
   trimRipple,
   type OpResult
 } from './ops'
@@ -50,6 +52,14 @@ type Cmd =
   | { op: 'slip'; pick: number; deltaFrames: number; jitter: number }
   | { op: 'move'; pick: number; toPick: number }
   | { op: 'rippleDeleteRange'; frac: number; jitter: number; durFrames: number }
+  | { op: 'detachAudio'; pick: number }
+  | {
+      op: 'trimConnected'
+      pick: number
+      edge: 'head' | 'tail'
+      deltaFrames: number
+      jitter: number
+    }
 
 const durFrames = fc.integer({ min: 1, max: 50 })
 const mediaInFrames = fc.integer({ min: 0, max: 580 })
@@ -84,7 +94,15 @@ const cmdArb: fc.Arbitrary<Cmd> = fc.oneof(
   fc.record({ op: fc.constant('roll' as const), pick, deltaFrames, jitter: deltaJitter }),
   fc.record({ op: fc.constant('slip' as const), pick, deltaFrames, jitter: deltaJitter }),
   fc.record({ op: fc.constant('move' as const), pick, toPick: pick }),
-  fc.record({ op: fc.constant('rippleDeleteRange' as const), frac, jitter, durFrames })
+  fc.record({ op: fc.constant('rippleDeleteRange' as const), frac, jitter, durFrames }),
+  fc.record({ op: fc.constant('detachAudio' as const), pick }),
+  fc.record({
+    op: fc.constant('trimConnected' as const),
+    pick,
+    edge: fc.constantFrom('head' as const, 'tail' as const),
+    deltaFrames,
+    jitter: deltaJitter
+  })
 )
 
 const initialArb: fc.Arbitrary<Sequence> = fc
@@ -153,6 +171,11 @@ function pickSpineId(seq: Sequence, n: number): string {
   return seq.spine[n % seq.spine.length].id
 }
 
+function pickConnectedId(seq: Sequence, n: number): string {
+  if (seq.connected.length === 0) return 'missing'
+  return seq.connected[n % seq.connected.length].id
+}
+
 function applyCommand(seq: Sequence, cmd: Cmd, step: number): OpResult {
   const total = sequenceDuration(seq)
   switch (cmd.op) {
@@ -213,6 +236,14 @@ function applyCommand(seq: Sequence, cmd: Cmd, step: number): OpResult {
       const from = Math.round(cmd.frac * total) + cmd.jitter
       return rippleDeleteRange(seq, { fromFlicks: from, toFlicks: from + cmd.durFrames * F })
     }
+    case 'detachAudio':
+      return detachAudio(seq, { clipId: pickSpineId(seq, cmd.pick) })
+    case 'trimConnected':
+      return trimConnected(seq, {
+        clipId: pickConnectedId(seq, cmd.pick),
+        edge: cmd.edge,
+        deltaFlicks: cmd.deltaFrames * F + cmd.jitter
+      })
   }
 }
 

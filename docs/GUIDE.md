@@ -83,6 +83,13 @@ You can also drag a clip from the browser straight onto the timeline.
 - `N` toggles **snapping** — drags and trims click onto clip edges and the playhead. Turn it off for sub-frame nudging.
 - Drag a clip's body to rearrange the spine; the other clips shuffle around it magnetically.
 
+### Copy, paste, duplicate
+
+- `Ctrl+C` copies the selected clips (spine and connected — effects, keyframes, and detached-audio flags ride along). `Ctrl+V` **insert-pastes** at the playhead; `Ctrl+Shift+V` pastes the clips **connected** above the spine at the playhead. Either paste is a single undo step.
+- `Ctrl+D` duplicates the selection right after it — no clipboard round-trip needed.
+- `Ctrl+Alt+V` is **Paste Attributes**: copy one clip, select another, and the copied clip's effects (transform, color, audio, keyframes) are applied to everything selected in one undo step. It does nothing if the clipboard is empty or holds more than one clip.
+- All of these also live in the timeline's right-click menu. The clipboard is session-only, and text fields keep the normal system copy/paste.
+
 ---
 
 ## 5. Trimming
@@ -97,6 +104,15 @@ You can also drag a clip from the browser straight onto the timeline.
 - `Ctrl+Z` undoes anything — every edit, trim, transition, and transcript cut is one undo step. `Ctrl+Shift+Z` redoes.
 
 > **Tip — leave handles.** Mark your in/out a second or two inside the clip's ends. Trims, rolls, slips, and especially transitions all need spare media ("handles") beyond the cut to work with.
+
+### Detach audio, J-cuts and L-cuts
+
+- **Right-click a spine clip → Detach Audio** (or `Ctrl+Shift+S` with it selected). The clip's audio moves into its own connected clip on the lane **below** the spine; the spine clip keeps the video and goes silent. The audio clip stays attached to its parent — move or rearrange the parent and it travels along.
+- Once detached, drag the audio clip's **edges** to trim it independently of the video:
+  - drag its **head** left past the parent's start and the audio leads the picture — a **J-cut** (you hear the next shot before you see it),
+  - drag its **tail** so the audio runs short (or long) under the next shot — an **L-cut**.
+- Trims clamp to the source media and the timeline start, so you can't drag past what exists. Detaching and each trim are single undo steps.
+- Expected (and intentional): after detaching, trimming or slipping the **video** no longer moves the audio — that independence is the point. If you want them in lockstep again, undo the detach.
 
 ---
 
@@ -119,6 +135,17 @@ Select a timeline clip and the Inspector (toggle with `Ctrl+4`) shows its tabs:
 
 Everything applies non-destructively and exports exactly as previewed.
 
+### Keyframing: animate a parameter over time
+
+Every Video and Color parameter can be animated with keyframes:
+
+1. Park the playhead where the move should start and click the **diamond** (`◇`) next to the parameter — it fills (`◆`) and a keyframe is recorded at the playhead.
+2. Move the playhead and **type a new value** — each edit writes another keyframe at the playhead. Two keyframes are all a Ken Burns push-in (Scale 100 → 120) or a fade-out (Opacity 100 → 0) needs.
+3. Use `◀` / `▶` to hop the playhead between a parameter's keyframes; small white diamonds appear along the bottom edge of the clip in the timeline.
+4. Click the filled diamond to remove the animation — the parameter freezes at whatever value it has right now.
+
+Values ease smoothly between keyframes and hold steady before the first and after the last one. Keyframes ride the **source media**, so blading, trimming, or rearranging a clip never shifts the animation — only a _slip_ moves the media (keyframes included) under the clip. As with everything else, the animation previews live and exports exactly as shown.
+
 ---
 
 ## 8. Edit by transcript — the headline feature
@@ -133,6 +160,34 @@ Magnetic transcribes speech **locally** with whisper.cpp (nothing leaves your ma
 6. **Search** the transcript to find a phrase and jump straight to it.
 
 Workflow that works: rough-cut the interview with `E`, then do your _content_ edit entirely in the transcript panel — cut the rambles as text — and only then fine-trim the cut points on the timeline.
+
+### Remove silence — the dead-air cutter
+
+The **Silence** tab (next to Transcript, top of the browser) finds every dead-air stretch in your timeline and cuts them all with one click:
+
+1. Open the **Silence** tab. Magnetic analyzes each imported clip's loudness once, in the background — after that, retuning is instant.
+2. Tune the detection: **Threshold** (how quiet counts as silent, default −34 dB), **Min duration** (ignore pauses shorter than this, default 0.5 s), **Padding** (breathing room kept on both sides of every cut, default 100 ms). Candidates appear live as red bands on the timeline; click a row to jump the playhead there, untick a row to keep that pause.
+3. Click **Cut N gaps** — every gap is ripple-deleted at once, and a single `Ctrl+Z` brings them all back (same one-step undo as Remove fillers).
+
+Detection is a loudness heuristic (50 ms RMS windows), so near fades you may want a lower threshold. Authored gaps you placed yourself are never detected — only quiet audio is.
+
+### Burned-in captions — live from the transcript
+
+Captions are never clips: they derive **live** from the transcript of your current cut, so every blade, trim, ripple, or transcript edit updates them instantly — there is nothing to re-sync, ever.
+
+1. Open the **Captions** tab in the Inspector (it's there even with nothing selected — captions are a sequence-level setting) and tick **Enabled**.
+2. Pick a style: **Pop-in** (words appear as they're spoken), **Karaoke** (full line with the current word highlighted), or **Block** (whole line at once). Font, size, color, highlight color, and position (bottom / middle / top) are all adjustable, and every change is one undo step.
+3. The viewer shows captions immediately, and **export burns them in exactly as previewed** — same compositor, WYSIWYG by construction.
+
+Cues are grouped automatically: a new caption starts after a pause longer than 0.6 s, when a line would exceed ~32 characters, or at every cut. Words that straddle a cut are dropped (same rule as the transcript panel), so trim to word boundaries — or edit in the transcript panel, which always cuts on them.
+
+### Caption sidecar export (.srt / .vtt)
+
+For platforms that want caption files instead of burned-in text, the Captions tab also exports sidecars:
+
+- **Export SRT…** writes a numbered SubRip file (`HH:MM:SS,mmm`, CRLF) — accepted by YouTube, Premiere, Resolve, and most players.
+- **Export VTT…** writes a WebVTT file (`HH:MM:SS.mmm`) for the web.
+- Leave **Save to** empty to pick the destination in a save dialog, or type a path directly. The file reflects the cues of your *current* cut at the moment you export.
 
 ---
 
@@ -150,7 +205,7 @@ Workflow that works: rough-cut the interview with `E`, then do your _content_ ed
 
 The full table lives in the [README](../README.md#keyboard-shortcuts) and behind `Shift+?` in-app. The twenty worth memorizing:
 
-`L` `K` `J` `Space` (transport) · `I` `O` `X` (marks) · `E` `W` `Q` `D` (edits) · `A` `B` `T` (tools) · `Delete` `Ctrl+B` `Ctrl+T` `Ctrl+Z` (surgery) · `N` (snapping) · `Ctrl+E` (export)
+`L` `K` `J` `Space` (transport) · `I` `O` `X` (marks) · `E` `W` `Q` `D` (edits) · `A` `B` `T` (tools) · `Delete` `Ctrl+B` `Ctrl+T` `Ctrl+Z` (surgery) · `Ctrl+C` `Ctrl+V` `Ctrl+D` `Ctrl+Alt+V` (clipboard) · `N` (snapping) · `Ctrl+E` (export)
 
 ---
 

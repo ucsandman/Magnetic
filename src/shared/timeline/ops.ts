@@ -1,5 +1,6 @@
 import { flicksPerFrame } from '../timecode'
 import type {
+  CaptionSettings,
   Clip,
   ClipFx,
   ConnectedClip,
@@ -9,7 +10,7 @@ import type {
   Transition,
   TransitionKind
 } from './model'
-import { sequenceDuration, spineIndexOf, spineStartOf } from './model'
+import { connectedStartOf, sequenceDuration, spineIndexOf, spineStartOf } from './model'
 import { itemAtTime, reattachByTime, resolveLaneCollisions } from './magnetic'
 import { editPointIndexOfCut, editPointInfo, pruneTransitions, transitionsOf } from './transitions'
 
@@ -277,7 +278,9 @@ export function connectAt(
     durationFlicks: args.clip.durationFlicks,
     sourceDurationFlicks: args.clip.sourceDurationFlicks
   }
+  if (args.clip.fx !== undefined) cc.fx = args.clip.fx
   if (args.titleData !== undefined) cc.titleData = args.titleData
+  if (args.clip.audioDisabled === true) cc.audioDisabled = true
   return ok(seq, seq.spine, [...seq.connected, cc])
 }
 
@@ -418,6 +421,83 @@ export function slip(seq: Sequence, args: { clipId: string; deltaFlicks: number 
   return ok(seq, spine, seq.connected)
 }
 
+/**
+ * Detach a spine clip's audio into a connected lane −1 clip covering the same
+ * media window. The spine clip keeps its video and gets `audioDisabled: true`;
+ * the new audio clip starts at offset 0 and follows its parent magnetically.
+ */
+export function detachAudio(seq: Sequence, args: { clipId: string }): OpResult {
+  const index = spineIndexOf(seq, args.clipId)
+  if (index === -1) return fail(seq, 'unknown-id', `no spine item "${args.clipId}"`)
+  const item = seq.spine[index]
+  if (item.kind !== 'clip') return fail(seq, 'invalid-target', 'gaps carry no audio to detach')
+  if (item.audioDisabled === true) {
+    return fail(seq, 'invalid-target', `audio of "${args.clipId}" is already detached`)
+  }
+  const spine = [...seq.spine]
+  spine[index] = { ...item, audioDisabled: true }
+  const audioClip: ConnectedClip = {
+    id: uniqueId(allIds(seq), `${args.clipId}:audio`),
+    assetId: item.assetId,
+    parentClipId: args.clipId,
+    offsetFlicks: 0,
+    lane: -1,
+    mediaInFlicks: item.mediaInFlicks,
+    durationFlicks: item.durationFlicks,
+    sourceDurationFlicks: item.sourceDurationFlicks
+  }
+  return ok(seq, spine, [...seq.connected, audioClip])
+}
+
+/**
+ * Trim a connected clip's head or tail independently of its parent — the
+ * split-edit primitive. A negative head delta pulls the start earlier
+ * (offset can go negative = J-cut); a negative tail delta ends it early
+ * (L-cut). Head clamps: media start, one-frame minimum, derived absolute
+ * start ≥ 0. Tail clamps: one-frame minimum, source media end.
+ */
+export function trimConnected(
+  seq: Sequence,
+  args: { clipId: string; edge: 'head' | 'tail'; deltaFlicks: number }
+): OpResult {
+  const index = seq.connected.findIndex((cc) => cc.id === args.clipId)
+  if (index === -1) return fail(seq, 'unknown-id', `no connected clip "${args.clipId}"`)
+  const cc = seq.connected[index]
+  const minFlicks = flicksPerFrame(seq.fps)
+  let replacement: ConnectedClip
+  if (args.edge === 'head') {
+    const startFlicks = connectedStartOf(seq, args.clipId)
+    if (startFlicks === null) {
+      return fail(seq, 'invalid-target', `connected clip "${args.clipId}" has no spine parent`)
+    }
+    // Positive delta shrinks from the front; negative reveals earlier media,
+    // bounded by media start AND by absolute time 0 (offset may go negative).
+    const delta = clamp(
+      args.deltaFlicks,
+      Math.max(-cc.mediaInFlicks, -startFlicks),
+      cc.durationFlicks - minFlicks
+    )
+    if (delta === 0) return noop(seq)
+    replacement = {
+      ...cc,
+      offsetFlicks: cc.offsetFlicks + delta,
+      mediaInFlicks: cc.mediaInFlicks + delta,
+      durationFlicks: cc.durationFlicks - delta
+    }
+  } else {
+    const duration = clamp(
+      cc.durationFlicks + args.deltaFlicks,
+      minFlicks,
+      cc.sourceDurationFlicks - cc.mediaInFlicks
+    )
+    if (duration === cc.durationFlicks) return noop(seq)
+    replacement = { ...cc, durationFlicks: duration }
+  }
+  const connected = [...seq.connected]
+  connected[index] = replacement
+  return ok(seq, seq.spine, connected)
+}
+
 export const DEFAULT_FX: ClipFx = {
   posX: 0,
   posY: 0,
@@ -480,8 +560,92 @@ export function rippleDeleteRange(
     position = itemEnd
   }
   if (spine.length === working.spine.length) return noop(seq)
-  const connected = reattachByTime(seq, spine, working.connected)
+
+  // Media-bearing connected clips (detached audio, B-roll) overlapping the
+  // removed range are CUT like the spine — otherwise a detached audio clip
+  // keeps playing the deleted span and desyncs from the video. Titles keep
+  // the old reattach-by-time behavior (they are decoration, not media).
+  const removedLen = end - start
+  const untouched: ConnectedClip[] = []
+  const overlapping: ConnectedClip[] = []
+  for (const cc of working.connected) {
+    const oldAbs = connectedStartOf(seq, cc.id)
+    const overlaps =
+      cc.titleData === undefined &&
+      oldAbs !== null &&
+      oldAbs < end &&
+      oldAbs + cc.durationFlicks > start
+    ;(overlaps ? overlapping : untouched).push(cc)
+  }
+  const connected = reattachByTime(seq, spine, untouched)
+  for (const cc of overlapping) {
+    const oldAbs = connectedStartOf(seq, cc.id)
+    if (oldAbs === null) continue
+    const oldEnd = oldAbs + cc.durationFlicks
+    const pieces: { absStart: number; mediaIn: number; duration: number }[] = []
+    if (oldAbs < start) {
+      pieces.push({
+        absStart: oldAbs,
+        mediaIn: cc.mediaInFlicks,
+        duration: Math.min(oldEnd, start) - oldAbs
+      })
+    }
+    if (oldEnd > end) {
+      const afterStart = Math.max(oldAbs, end)
+      pieces.push({
+        absStart: afterStart - removedLen,
+        mediaIn: cc.mediaInFlicks + (afterStart - oldAbs),
+        duration: oldEnd - afterStart
+      })
+    }
+    let first = true
+    for (const piece of pieces) {
+      if (piece.duration < minFlicks) continue
+      const target = itemAtTime(spine, piece.absStart)
+      if (target === null) continue
+      connected.push({
+        ...cc,
+        id: first ? cc.id : uniqueId(ids, cc.id),
+        parentClipId: target.item.id,
+        offsetFlicks: piece.absStart - target.startFlicks,
+        mediaInFlicks: piece.mediaIn,
+        durationFlicks: piece.duration
+      })
+      first = false
+    }
+  }
   return ok(seq, spine, connected)
+}
+
+export const DEFAULT_CAPTIONS: CaptionSettings = {
+  enabled: false,
+  preset: 'pop-in',
+  font: 'system-ui, sans-serif',
+  sizePx: 56,
+  color: '#ffffff',
+  highlightColor: '#ffd60a',
+  position: 'bottom'
+}
+
+const CAPTION_PRESETS: readonly CaptionSettings['preset'][] = ['pop-in', 'karaoke', 'block']
+const CAPTION_POSITIONS: readonly CaptionSettings['position'][] = ['bottom', 'middle', 'top']
+
+/** Set the sequence-level caption settings (undoable; persists via saveSequence). */
+export function setCaptionSettings(seq: Sequence, args: { captions: CaptionSettings }): OpResult {
+  const captions = args.captions
+  if (!CAPTION_PRESETS.includes(captions.preset)) {
+    return fail(seq, 'invalid-target', `unknown caption preset "${captions.preset}"`)
+  }
+  if (!CAPTION_POSITIONS.includes(captions.position)) {
+    return fail(seq, 'invalid-target', `unknown caption position "${captions.position}"`)
+  }
+  if (!Number.isFinite(captions.sizePx) || captions.sizePx <= 0) {
+    return fail(seq, 'invalid-target', `caption size must be a positive number`)
+  }
+  return {
+    next: { ...seq, captions },
+    inverse: { type: 'restore', sequence: seq }
+  }
 }
 
 /** Update a connected title's text payload (undoable). */

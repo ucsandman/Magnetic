@@ -20,7 +20,7 @@ export interface SequenceWord {
   isFiller: boolean
 }
 
-interface ClipWindow {
+export interface ClipWindow {
   clipId: string
   assetId: string
   seqStartFlicks: number
@@ -28,11 +28,18 @@ interface ClipWindow {
   durationFlicks: number
 }
 
-function clipWindows(sequence: Sequence): ClipWindow[] {
+/**
+ * Every audio-bearing clip (spine + non-title connected) with its derived
+ * sequence start. Spine clips whose audio was detached are skipped — their
+ * audio (and therefore their transcript words) lives in the lane −1 child,
+ * which covers the identical media window; including both would double every
+ * projected word (captions, SRT export, filler ranges).
+ */
+export function clipWindows(sequence: Sequence): ClipWindow[] {
   const windows: ClipWindow[] = []
   let position = 0
   for (const item of sequence.spine) {
-    if (item.kind === 'clip') {
+    if (item.kind === 'clip' && item.audioDisabled !== true) {
       windows.push({
         clipId: item.id,
         assetId: item.assetId,

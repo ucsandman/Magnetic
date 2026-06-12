@@ -5,7 +5,7 @@ import type { MediaAsset, WaveformInfo } from '../../shared/types'
 import { writeJsonAtomic } from '../project-io/atomic'
 import { ffmpegPath } from '../binaries'
 
-const SAMPLE_RATE = 8000
+export const SAMPLE_RATE = 8000
 const BUCKET_COUNT = 1000
 
 /**
@@ -47,7 +47,8 @@ export async function generateWaveform(
   return { peaksPath: peaksRelPath }
 }
 
-function decodePcm(filePath: string): Promise<Buffer> {
+/** Decode the first audio stream to mono 16-bit PCM at 8 kHz (shared with audio-envelope). */
+export function decodePcm(filePath: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       ffmpegPath(),

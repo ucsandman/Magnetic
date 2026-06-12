@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
   type DragEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -9,8 +10,9 @@ import {
 } from 'react'
 import { FLICKS_PER_SECOND, flicksPerFrame } from '../../shared/timecode'
 import { sequenceDuration, spineIndexOf } from '../../shared/timeline/model'
-import { itemAtTime } from '../../shared/timeline/magnetic'
+import { itemAtTime, spineStartIndex } from '../../shared/timeline/magnetic'
 import { collectSnapPoints, snapTime } from '../../shared/timeline/snap'
+import { ContextMenu, type ContextMenuState } from '../context-menu'
 import { playbackEngine } from '../playback/engine'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore, type SourceClip } from '../state/timeline-store'
@@ -18,6 +20,7 @@ import { onMediaReady } from './media-cache'
 import { registerDrawDriver } from './perf'
 import {
   EDGE_HIT_PX,
+  LANE_H,
   RULER_H,
   SPINE_H,
   computeClipRects,
@@ -40,7 +43,7 @@ const SNAP_TOLERANCE_PX = 9
 const DRAG_THRESHOLD_PX = 4
 
 interface DragState {
-  mode: 'move' | 'trim' | 'roll' | 'slip' | 'playhead'
+  mode: 'move' | 'trim' | 'trim-connected' | 'roll' | 'slip' | 'playhead'
   clipId: string
   /** trim: which clip edge is being dragged. */
   edge: 'head' | 'tail'
@@ -76,19 +79,22 @@ export function TimelineCanvas(): ReactNode {
   const rafRef = useRef<number | null>(null)
   const snapshotRef = useRef(snapshot)
   const openedAssetIdRef = useRef(openedAssetId)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   useEffect(() => {
     snapshotRef.current = snapshot
     openedAssetIdRef.current = openedAssetId
   }, [snapshot, openedAssetId])
 
   const buildRenderState = useCallback((): RenderState | null => {
-    const { sequence, selection, playheadFlicks, zoomPxPerSec } = useTimelineStore.getState()
+    const { sequence, selection, playheadFlicks, zoomPxPerSec, silenceRanges } =
+      useTimelineStore.getState()
     const canvas = canvasRef.current
     if (sequence === null || canvas === null) return null
     return {
       sequence,
       selection,
       snapshot: snapshotRef.current,
+      silenceRanges,
       playheadFlicks,
       zoomPxPerSec,
       scrollX: scrollXRef.current,
@@ -198,7 +204,7 @@ export function TimelineCanvas(): ReactNode {
     if (!drag.started && Math.abs(x - drag.startX) < DRAG_THRESHOLD_PX) return
     drag.started = true
     const sequence = state.sequence
-    if (drag.mode === 'trim' || drag.mode === 'roll') {
+    if (drag.mode === 'trim' || drag.mode === 'trim-connected' || drag.mode === 'roll') {
       const desiredBoundary = drag.origBoundaryFlicks + pxToFlicks(state, x - drag.startX)
       let boundaryFlicks = Math.max(0, desiredBoundary)
       snapGuideXRef.current = null
@@ -216,6 +222,14 @@ export function TimelineCanvas(): ReactNode {
         x: timeToX(state, boundaryFlicks),
         clipId: drag.clipId,
         label: framesLabel(drag.pendingDeltaFlicks)
+      }
+      if (drag.mode === 'trim-connected') {
+        // caret spans the connected clip's lane, not the spine
+        const cc = sequence.connected.find((candidate) => candidate.id === drag.clipId)
+        if (cc !== undefined) {
+          ghostRef.current.y = rowLayout(sequence).laneY(cc.lane) - 4
+          ghostRef.current.h = LANE_H + 8
+        }
       }
     } else if (drag.mode === 'slip') {
       // dragging right reveals earlier media (FCP slip direction)
@@ -272,6 +286,8 @@ export function TimelineCanvas(): ReactNode {
     if (drag !== null && drag.started) {
       if (drag.mode === 'trim' && drag.pendingDeltaFlicks !== 0) {
         store.trimClip(drag.clipId, drag.edge, drag.pendingDeltaFlicks)
+      } else if (drag.mode === 'trim-connected' && drag.pendingDeltaFlicks !== 0) {
+        store.trimConnectedClip(drag.clipId, drag.edge, drag.pendingDeltaFlicks)
       } else if (drag.mode === 'roll' && drag.pendingDeltaFlicks !== 0) {
         store.rollEditPoint(drag.editPointIndex, drag.pendingDeltaFlicks)
       } else if (drag.mode === 'slip' && drag.pendingDeltaFlicks !== 0) {
@@ -355,6 +371,48 @@ export function TimelineCanvas(): ReactNode {
     return null
   }
 
+  /** Head/tail edge zone of a connected clip under the pointer (state-derived). */
+  const detectConnectedEdge = (
+    state: RenderState,
+    x: number,
+    y: number
+  ): {
+    clipId: string
+    edge: 'head' | 'tail'
+    boundaryFlicks: number
+    x: number
+    y: number
+  } | null => {
+    const layout = rowLayout(state.sequence)
+    const startOf = spineStartIndex(state.sequence.spine)
+    // back-to-front, like hitTest: later clips paint on top
+    for (let i = state.sequence.connected.length - 1; i >= 0; i--) {
+      const cc = state.sequence.connected[i]
+      const parentStart = startOf.get(cc.parentClipId)
+      if (parentStart === undefined) continue
+      const laneTop = layout.laneY(cc.lane)
+      if (y < laneTop || y > laneTop + LANE_H) continue
+      const start = parentStart + cc.offsetFlicks
+      const startX = timeToX(state, start)
+      const endX = timeToX(state, start + cc.durationFlicks)
+      if (x < startX || x > endX) continue
+      if (x - startX <= EDGE_HIT_PX) {
+        return { clipId: cc.id, edge: 'head', boundaryFlicks: start, x: startX, y: laneTop }
+      }
+      if (endX - x <= EDGE_HIT_PX) {
+        return {
+          clipId: cc.id,
+          edge: 'tail',
+          boundaryFlicks: start + cc.durationFlicks,
+          x: endX,
+          y: laneTop
+        }
+      }
+      return null // clip body — selection/other gestures handle it
+    }
+    return null
+  }
+
   const startDrag = (
     drag: Omit<DragState, 'started' | 'pendingDeltaFlicks' | 'pendingToIndex'>
   ): void => {
@@ -405,6 +463,19 @@ export function TimelineCanvas(): ReactNode {
     }
 
     if (zone === null) {
+      const connectedEdge = detectConnectedEdge(state, x, y)
+      if (connectedEdge !== null) {
+        store.selectClip(connectedEdge.clipId, event.shiftKey)
+        startDrag({
+          mode: 'trim-connected',
+          clipId: connectedEdge.clipId,
+          edge: connectedEdge.edge,
+          editPointIndex: -1,
+          startX: x,
+          origBoundaryFlicks: connectedEdge.boundaryFlicks
+        })
+        return
+      }
       const hit = hitTest(state, x, y)
       if (hit === null) {
         store.clearSelection()
@@ -501,6 +572,17 @@ export function TimelineCanvas(): ReactNode {
         } else if (!zone.isGap) {
           cursor = tool === 'trim' ? 'ew-resize' : 'grab'
         }
+      } else {
+        const connectedEdge = detectConnectedEdge(state, x, y)
+        if (connectedEdge !== null) {
+          cursor = 'col-resize'
+          hoverEdgeRef.current = {
+            x: connectedEdge.x,
+            y: connectedEdge.y,
+            h: LANE_H,
+            edge: connectedEdge.edge
+          }
+        }
       }
     }
     if (containerRef.current !== null) containerRef.current.style.cursor = cursor
@@ -552,7 +634,90 @@ export function TimelineCanvas(): ReactNode {
         return
       }
     }
+    const hit = hitTest(state, x, y)
+    const zone = hit === null ? detectSpineZone(state, x, y) : null
+    const clipId =
+      hit?.id ??
+      (zone !== null && (zone.type === 'body' || zone.type === 'edge') ? zone.clipId : null)
+    if (clipId === null) {
+      setContextMenu(null)
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    const store = useTimelineStore.getState()
+    const spineItem = state.sequence.spine.find((item) => item.id === clipId)
+    const isSpineClip = spineItem !== undefined
+    const canDetachAudio =
+      spineItem !== undefined &&
+      spineItem.kind === 'clip' &&
+      spineItem.audioDisabled !== true &&
+      snapshotRef.current?.assets[spineItem.assetId]?.audio !== undefined
+    const frame = flicksPerFrame(state.sequence.fps)
+    const bladeTime = Math.round(xToTime(state, x) / frame) * frame
+    store.selectClip(clipId, false)
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      items: [
+        {
+          id: 'blade',
+          label: 'Blade at Cursor',
+          disabled: !isSpineClip,
+          onSelect: () => store.bladeAt(clipId, bladeTime)
+        },
+        {
+          id: 'detach-audio',
+          label: 'Detach Audio',
+          disabled: !canDetachAudio,
+          onSelect: () => store.detachAudio(clipId)
+        },
+        {
+          id: 'copy',
+          label: 'Copy',
+          onSelect: () => useTimelineStore.getState().copySelection()
+        },
+        {
+          id: 'paste',
+          label: 'Paste at Playhead',
+          disabled: store.clipboard.length === 0,
+          onSelect: () => useTimelineStore.getState().pasteAtPlayhead('insert')
+        },
+        {
+          id: 'duplicate',
+          label: 'Duplicate',
+          onSelect: () => useTimelineStore.getState().duplicateSelection()
+        },
+        {
+          id: 'paste-attributes',
+          label: 'Paste Attributes',
+          disabled: store.clipboard.length !== 1,
+          onSelect: () => useTimelineStore.getState().pasteAttributes()
+        },
+        {
+          id: 'ripple-delete',
+          label: 'Ripple Delete',
+          danger: true,
+          disabled: !isSpineClip,
+          onSelect: () => {
+            store.selectClip(clipId, false)
+            store.deleteSelection('ripple')
+          }
+        },
+        {
+          id: 'lift-delete',
+          label: 'Lift Delete',
+          disabled: !isSpineClip,
+          onSelect: () => {
+            store.selectClip(clipId, false)
+            store.deleteSelection('lift')
+          }
+        }
+      ]
+    })
   }
+
+  const closeContextMenu = useCallback((): void => setContextMenu(null), [])
 
   const onWheel = (event: WheelEvent<HTMLDivElement>): void => {
     const store = useTimelineStore.getState()
@@ -627,6 +792,7 @@ export function TimelineCanvas(): ReactNode {
       onDrop={onDrop}
     >
       <canvas ref={canvasRef} className="timeline-canvas" />
+      <ContextMenu menu={contextMenu} onClose={closeContextMenu} />
     </div>
   )
 }

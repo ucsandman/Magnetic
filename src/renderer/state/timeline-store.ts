@@ -1,11 +1,29 @@
 import { create } from 'zustand'
 import { FLICKS_PER_SECOND, flicksPerFrame, type Rational } from '../../shared/timecode'
-import { clipAtTime, sequenceDuration, type Sequence } from '../../shared/timeline/model'
+import {
+  clipAtTime,
+  connectedStartOf,
+  sequenceDuration,
+  spineStartOf,
+  type Clip,
+  type ConnectedClip,
+  type Sequence
+} from '../../shared/timeline/model'
+import {
+  buildClipboardPayload,
+  pasteSteps,
+  selectionEndFlicks,
+  type ClipboardClip
+} from '../../shared/timeline/clipboard'
+import { rebaseKeyframes } from '../../shared/timeline/fx-eval'
 import {
   addTransition,
   append,
   blade,
   connectAt,
+  DEFAULT_FX,
+  detachAudio,
+  setCaptionSettings,
   insertAt,
   liftDelete,
   move,
@@ -17,11 +35,17 @@ import {
   setTitleData,
   setTransitionKind,
   slip,
+  trimConnected,
   trimRipple,
   type ClipInput,
   type OpResult
 } from '../../shared/timeline/ops'
-import type { ClipFx, TitleData, TransitionKind } from '../../shared/timeline/model'
+import type {
+  CaptionSettings,
+  ClipFx,
+  TitleData,
+  TransitionKind
+} from '../../shared/timeline/model'
 import { transitionsOf } from '../../shared/timeline/transitions'
 import { TITLE_PRESETS } from '../titles/render'
 import {
@@ -79,6 +103,8 @@ interface TimelineStore {
   setSequencePlaying(playing: boolean): void
   setFx(clipId: string, fx: ClipFx): void
   setTitle(clipId: string, titleData: TitleData): void
+  /** Sequence-level burned-in caption settings (undoable). */
+  setCaptions(captions: CaptionSettings): void
   /** Default 1 s dissolve at the edit point nearest the playhead (Ctrl+T). */
   addTransitionAtPlayhead(): void
   cycleTransitionKind(transitionId: string): void
@@ -86,8 +112,21 @@ interface TimelineStore {
   connectTitleAtPlayhead(preset: TitleData['preset']): void
   /** Ripple-delete several time ranges as ONE undo step (back-to-front). */
   deleteRanges(ranges: { fromFlicks: number; toFlicks: number }[]): void
+  /** Session-only clipboard: selected clips relative to the earliest (Ctrl+C). */
+  clipboard: ClipboardClip[]
+  /** Snapshot the selected clips into the clipboard. */
+  copySelection(): void
+  /** Replay the clipboard at the playhead as ONE undo step (Ctrl+V / Ctrl+Shift+V). */
+  pasteAtPlayhead(mode: 'insert' | 'connect'): void
+  /** Duplicate the selected clips right after the selection's end (Ctrl+D). */
+  duplicateSelection(): void
+  /** Apply the single copied clip's fx (incl. keyframes) to every selected clip. */
+  pasteAttributes(): void
   /** Selection time-range (transcript word selection ↔ timeline band). */
   setTimeRange(fromFlicks: number | null, toFlicks?: number): void
+  /** Candidate dead-air ranges previewed on the timeline (SilencePanel owns this). */
+  silenceRanges: { fromFlicks: number; toFlicks: number }[] | null
+  setSilenceRanges(ranges: { fromFlicks: number; toFlicks: number }[] | null): void
   load(): Promise<void>
   applyOp(op: Op): OpResult | null
   bladeAt(clipId: string, timeFlicks: number): void
@@ -96,6 +135,10 @@ interface TimelineStore {
   rollEditPoint(editPointIndex: number, deltaFlicks: number): void
   slipClip(clipId: string, deltaFlicks: number): void
   trimClip(clipId: string, edge: 'head' | 'tail', deltaFlicks: number): void
+  /** Detach a spine clip's audio into a connected lane −1 clip (J/L-cut prep). */
+  detachAudio(clipId: string): void
+  /** Trim a connected clip's edge independently of its parent (J/L cuts). */
+  trimConnectedClip(clipId: string, edge: 'head' | 'tail', deltaFlicks: number): void
   appendSource(src: SourceClip): void
   insertSourceAtPlayhead(src: SourceClip): void
   overwriteSourceAtPlayhead(src: SourceClip): void
@@ -112,6 +155,46 @@ interface TimelineStore {
   zoomBy(factor: number): void
   toggleSnapping(): void
   toggleSkimming(): void
+}
+
+/** A timeline clip (spine or connected) with its derived sequence start. */
+function timelineClipOf(
+  sequence: Sequence,
+  clipId: string
+): { clip: Clip | ConnectedClip; startFlicks: number } | null {
+  const spineItem = sequence.spine.find((item) => item.id === clipId)
+  if (spineItem !== undefined) {
+    if (spineItem.kind !== 'clip') return null
+    const start = spineStartOf(sequence, clipId)
+    return start === null ? null : { clip: spineItem, startFlicks: start }
+  }
+  const connected = sequence.connected.find((cc) => cc.id === clipId)
+  if (connected === undefined) return null
+  const start = connectedStartOf(sequence, clipId)
+  return start === null ? null : { clip: connected, startFlicks: start }
+}
+
+/** A clip's media time at a sequence time, clamped to its media window (keyframe writes). */
+export function clipMediaTimeAt(
+  sequence: Sequence,
+  clipId: string,
+  timeFlicks: number
+): number | null {
+  const found = timelineClipOf(sequence, clipId)
+  if (found === null) return null
+  const offset = Math.min(Math.max(timeFlicks - found.startFlicks, 0), found.clip.durationFlicks)
+  return found.clip.mediaInFlicks + offset
+}
+
+/** Inverse mapping: the sequence time at which a clip shows a media time (keyframe nav). */
+export function clipSequenceTimeOfMedia(
+  sequence: Sequence,
+  clipId: string,
+  mediaFlicks: number
+): number | null {
+  const found = timelineClipOf(sequence, clipId)
+  if (found === null) return null
+  return found.startFlicks + (mediaFlicks - found.clip.mediaInFlicks)
 }
 
 function clipInputFrom(src: SourceClip): ClipInput {
@@ -160,6 +243,35 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
     return result
   }
 
+  /** Replay a clipboard payload at `atFlicks` through kernel ops as ONE undo step. */
+  function replayClipboard(
+    payload: ClipboardClip[],
+    atFlicks: number,
+    mode: 'insert' | 'connect'
+  ): void {
+    if (stack === null || payload.length === 0) return
+    stack.beginGroup()
+    const failures: string[] = []
+    for (const step of pasteSteps(payload, atFlicks, mode, () => crypto.randomUUID())) {
+      const result = stack.apply((seq) =>
+        step.kind === 'insert'
+          ? insertAt(seq, { clip: step.clip, timeFlicks: step.timeFlicks })
+          : connectAt(seq, {
+              clip: step.clip,
+              timeFlicks: step.timeFlicks,
+              lane: step.lane,
+              titleData: step.titleData
+            })
+      )
+      if (result.error !== undefined) failures.push(`${step.kind}: ${result.error.message}`)
+    }
+    stack.endGroup()
+    if (failures.length > 0) {
+      console.warn(`paste: ${failures.length} clip(s) skipped — ${failures.join('; ')}`)
+    }
+    syncFromStack()
+  }
+
   return {
     projectId: null,
     sequence: null,
@@ -190,6 +302,10 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 
     setTitle(clipId, titleData) {
       apply((seq) => setTitleData(seq, { clipId, titleData }))
+    },
+
+    setCaptions(captions) {
+      apply((seq) => setCaptionSettings(seq, { captions }))
     },
 
     addTransitionAtPlayhead() {
@@ -278,7 +394,21 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
       apply((seq) => trimRipple(seq, { clipId, edge, deltaFlicks }))
     },
 
+    detachAudio(clipId) {
+      apply((seq) => detachAudio(seq, { clipId }))
+    },
+
+    trimConnectedClip(clipId, edge, deltaFlicks) {
+      apply((seq) => trimConnected(seq, { clipId, edge, deltaFlicks }))
+    },
+
     async load() {
+      // A pending debounced save would persist the PRE-load sequence over
+      // whatever we are about to read (e.g. after Delete Media pruned clips).
+      if (persistTimer !== null) {
+        clearTimeout(persistTimer)
+        persistTimer = null
+      }
       const project = await window.api.getProject()
       stack = new UndoStack(project.sequence)
       set({ projectId: project.id, sequence: project.sequence })
@@ -322,6 +452,59 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
       }
       stack.endGroup()
       syncFromStack()
+    },
+
+    clipboard: [],
+
+    copySelection() {
+      const { sequence, selection } = get()
+      if (sequence === null) return
+      const payload = buildClipboardPayload(sequence, selection.clipIds)
+      if (payload.length === 0) return
+      set({ clipboard: payload })
+    },
+
+    pasteAtPlayhead(mode) {
+      const { clipboard, playheadFlicks } = get()
+      replayClipboard(clipboard, playheadFlicks, mode)
+    },
+
+    duplicateSelection() {
+      const { sequence, selection } = get()
+      if (sequence === null) return
+      const payload = buildClipboardPayload(sequence, selection.clipIds)
+      const end = selectionEndFlicks(sequence, selection.clipIds)
+      if (payload.length === 0 || end === null) return
+      replayClipboard(payload, end, 'insert')
+    },
+
+    pasteAttributes() {
+      const { clipboard, sequence, selection } = get()
+      // Attributes come from exactly ONE copied clip — ambiguous otherwise.
+      if (stack === null || sequence === null || clipboard.length !== 1) return
+      if (selection.clipIds.length === 0) return
+      const fx = clipboard[0].fx ?? DEFAULT_FX
+      stack.beginGroup()
+      for (const clipId of selection.clipIds) {
+        // Keyframes are media-time anchored to the SOURCE clip — shift them
+        // into each target's media window so the animation keeps its shape.
+        const target =
+          sequence.spine.find((item) => item.id === clipId && item.kind === 'clip') ??
+          sequence.connected.find((candidate) => candidate.id === clipId)
+        const rebased =
+          target !== undefined && 'mediaInFlicks' in target
+            ? rebaseKeyframes(fx, clipboard[0].mediaInFlicks, target.mediaInFlicks)
+            : fx
+        stack.apply((seq) => setClipFx(seq, { clipId, fx: structuredClone(rebased) }))
+      }
+      stack.endGroup()
+      syncFromStack()
+    },
+
+    silenceRanges: null,
+
+    setSilenceRanges(silenceRanges) {
+      set({ silenceRanges })
     },
 
     setTimeRange(fromFlicks, toFlicks) {
@@ -457,9 +640,28 @@ function applyRandomOps(count: number, seed: number, asset: Omit<SourceClip, 'fp
 export function installTimelineTestHooks(): void {
   const testWindow = window as unknown as Record<string, unknown>
   testWindow.__magneticState = () => {
-    const { sequence, selection, playheadFlicks, zoomPxPerSec, snapping, skimming, tool } =
-      useTimelineStore.getState()
-    return { sequence, selection, playheadFlicks, zoomPxPerSec, snapping, skimming, tool }
+    const {
+      sequence,
+      selection,
+      playheadFlicks,
+      zoomPxPerSec,
+      snapping,
+      skimming,
+      tool,
+      clipboard,
+      silenceRanges
+    } = useTimelineStore.getState()
+    return {
+      sequence,
+      selection,
+      playheadFlicks,
+      zoomPxPerSec,
+      snapping,
+      skimming,
+      tool,
+      clipboard,
+      silenceRanges
+    }
   }
   testWindow.__magneticTimeline = {
     buildPerfSequence(count: number, asset: Omit<SourceClip, 'fps'>) {
@@ -474,6 +676,8 @@ export function installTimelineTestHooks(): void {
     playback: {
       readPixels: (x: number, y: number, w: number, h: number) =>
         playbackEngine.readPixels(x, y, w, h),
+      /** Seek the sequence playhead (captions E2E: park the playhead in silence). */
+      seek: (flicks: number) => useTimelineStore.getState().setPlayhead(flicks),
       drift: () => playbackEngine.driftReport(),
       rms: () => playbackEngine.audioRms(),
       isPlaying: () => playbackEngine.isPlaying

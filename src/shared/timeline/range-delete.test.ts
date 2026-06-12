@@ -53,6 +53,59 @@ describe('rippleDeleteRange', () => {
     expect(connectedStartOf(next, 'cc')).toBe(8 * F)
   })
 
+  it('cuts a detached lane -1 audio clip like the spine (split into two pieces)', () => {
+    const audio = { ...connected('au', 'a', 0, 10, -1) }
+    const s = seq([clip('a', 10)], [audio])
+    const { next } = rippleDeleteRange(s, { fromFlicks: 3 * F, toFlicks: 7 * F })
+    const pieces = next.connected.filter((cc) => cc.lane === -1)
+    expect(pieces).toHaveLength(2)
+    const [before, after] = [...pieces].sort(
+      (a, b) => (connectedStartOf(next, a.id) ?? 0) - (connectedStartOf(next, b.id) ?? 0)
+    )
+    expect(connectedStartOf(next, before.id)).toBe(0)
+    expect(before.mediaInFlicks).toBe(0)
+    expect(before.durationFlicks).toBe(3 * F)
+    expect(connectedStartOf(next, after.id)).toBe(3 * F)
+    expect(after.mediaInFlicks).toBe(7 * F) // media skips the removed middle
+    expect(after.durationFlicks).toBe(3 * F)
+  })
+
+  it('drops a connected media clip fully inside the removed range', () => {
+    const s = seq([clip('a', 10)], [connected('au', 'a', 4, 2, -1)])
+    const { next } = rippleDeleteRange(s, { fromFlicks: 3 * F, toFlicks: 7 * F })
+    expect(next.connected).toHaveLength(0)
+  })
+
+  it('head-trims a connected media clip overlapping the start of the range', () => {
+    // audio [5, 10) over removed [3, 7): keep [7, 10) shifted to [3, 6)
+    const s = seq([clip('a', 10)], [connected('au', 'a', 5, 5, -1)])
+    const { next } = rippleDeleteRange(s, { fromFlicks: 3 * F, toFlicks: 7 * F })
+    expect(next.connected).toHaveLength(1)
+    const [au] = next.connected
+    expect(connectedStartOf(next, au.id)).toBe(3 * F)
+    expect(au.mediaInFlicks).toBe(2 * F) // skipped [5,7) of its own media
+    expect(au.durationFlicks).toBe(3 * F)
+  })
+
+  it('leaves titles uncut across the range (decoration keeps old behavior)', () => {
+    const title = {
+      ...connected('t', 'a', 0, 8, 1),
+      titleData: {
+        text: 'T',
+        font: 'sans-serif',
+        sizePx: 48,
+        color: '#fff',
+        x: 960,
+        y: 540,
+        preset: 'basic' as const
+      }
+    }
+    const s = seq([clip('a', 10)], [title])
+    const { next } = rippleDeleteRange(s, { fromFlicks: 3 * F, toFlicks: 7 * F })
+    expect(next.connected).toHaveLength(1)
+    expect(next.connected[0].durationFlicks).toBe(8 * F)
+  })
+
   it('returns a restore inverse (single undo step)', () => {
     const s = seq([clip('a', 10)])
     const result = rippleDeleteRange(s, { fromFlicks: 2 * F, toFlicks: 4 * F })

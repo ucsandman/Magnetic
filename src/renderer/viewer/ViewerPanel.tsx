@@ -10,6 +10,7 @@ import {
   type Rational
 } from '../../shared/timecode'
 import { registerShortcut } from '../shortcuts'
+import { needsProxy } from '../playback/sessions'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 import { SequencePlayer } from './SequencePlayer'
@@ -58,10 +59,14 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
   const { setMarkedRange, skimTarget } = useLibrary()
   const fps = asset.video?.fps ?? FALLBACK_FPS
   const durationFlicks = asset.durationFlicks
+  const proxyNeeded = needsProxy(asset)
   const sectionRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const scrubberRef = useRef<HTMLDivElement>(null)
 
+  const [resolvedProxyUrl, setResolvedProxyUrl] = useState<string | null>(null)
+  const [mediaError, setMediaError] = useState<string | null>(null)
+  const sourceUrl = proxyNeeded ? (asset.proxyUrl ?? resolvedProxyUrl ?? '') : asset.mediaUrl
   const [timecode, setTimecode] = useState('00:00:00:00')
   const [positionRatio, setPositionRatio] = useState(0)
   const [playState, setPlayState] = useState<PlayState>('paused')
@@ -154,6 +159,30 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
     },
     [stopReverse, setState, pause]
   )
+
+  useEffect(() => {
+    let disposed = false
+    if (!proxyNeeded || asset.proxyUrl !== undefined) {
+      return () => {
+        disposed = true
+      }
+    }
+    void window.api
+      .ensureProxy(asset.id)
+      .then((url) => {
+        if (!disposed) setResolvedProxyUrl(url)
+      })
+      .catch((error: unknown) => {
+        // Keep the original-media fallback (plays fine for e.g. unusual
+        // containers with h264 inside) but say so — a codec the renderer
+        // cannot decode will hit the <video> onError overlay below.
+        console.error(`preview proxy failed for ${asset.fileName}:`, error)
+        if (!disposed) setResolvedProxyUrl(asset.mediaUrl)
+      })
+    return () => {
+      disposed = true
+    }
+  }, [asset.id, asset.fileName, asset.mediaUrl, asset.proxyUrl, proxyNeeded])
 
   const seekToFlicks = useCallback(
     (flicks: number): void => {
@@ -331,7 +360,29 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
         </span>
       </div>
       <div className="viewer-stage">
-        <video ref={videoRef} data-testid="viewer-video" src={asset.mediaUrl} />
+        <video
+          ref={videoRef}
+          data-testid="viewer-video"
+          src={sourceUrl}
+          onPause={() => {
+            // Keep the transport UI in sync when the element pauses on its own
+            // (end of media, fatal error). Reverse mode pauses intentionally.
+            if (playStateRef.current === 'forward') setState('paused')
+          }}
+          onEnded={pause}
+          onError={() => {
+            const error = videoRef.current?.error
+            setMediaError(
+              error?.message === '' || error == null ? 'cannot decode this media' : error.message
+            )
+          }}
+          onLoadedData={() => setMediaError(null)}
+        />
+        {mediaError !== null && (
+          <div className="viewer-media-error" data-testid="viewer-media-error">
+            Preview unavailable — {mediaError}
+          </div>
+        )}
       </div>
       <div
         className="viewer-scrubber"

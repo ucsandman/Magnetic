@@ -19,13 +19,13 @@ export interface AudioJob {
   fx: ClipFx
 }
 
-/** Every audible clip in the sequence (titles are silent). */
+/** Every audible clip in the sequence (titles and audio-detached spine clips are silent). */
 export function collectAudioJobs(sequence: Sequence): AudioJob[] {
   const startOf = spineStartIndex(sequence.spine)
   const jobs: AudioJob[] = []
   let position = 0
   for (const item of sequence.spine) {
-    if (item.kind === 'clip') {
+    if (item.kind === 'clip' && item.audioDisabled !== true) {
       jobs.push({
         assetId: item.assetId,
         clipStartSec: flicksToSeconds(position),
@@ -37,7 +37,7 @@ export function collectAudioJobs(sequence: Sequence): AudioJob[] {
     position += item.durationFlicks
   }
   for (const cc of sequence.connected) {
-    if (cc.titleData !== undefined) continue
+    if (cc.titleData !== undefined || cc.audioDisabled === true) continue
     const parentStart = startOf.get(cc.parentClipId)
     if (parentStart === undefined) continue
     jobs.push({

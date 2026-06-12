@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -10,8 +11,11 @@ import {
 import type { AssetView, ImportError, Rating } from '../../shared/types'
 import { formatDurationFlicks } from '../../shared/timecode'
 import { registerShortcut } from '../shortcuts'
+import { ContextMenu, type ContextMenuState } from '../context-menu'
 import { useLibrary } from '../state/LibraryContext'
+import { useTimelineStore } from '../state/timeline-store'
 import { TranscriptPanel } from '../transcript/TranscriptPanel'
+import { SilencePanel } from '../silence/SilencePanel'
 import { Sidebar } from './Sidebar'
 import { AssetCell } from './AssetCell'
 
@@ -20,13 +24,14 @@ type ViewMode = 'grid' | 'list'
 
 export function BrowserPanel(): ReactNode {
   const { snapshot, selectedIds, setSelectedIds, openAsset } = useLibrary()
-  const [tab, setTab] = useState<'clips' | 'transcript'>('clips')
+  const [tab, setTab] = useState<'clips' | 'transcript' | 'silence'>('clips')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<RatingFilter>('all')
   const [view, setView] = useState<ViewMode>('grid')
   const [eventId, setEventId] = useState<string | null>(null)
   const [importErrors, setImportErrors] = useState<ImportError[]>([])
   const [lastClickedId, setLastClickedId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
 
   const currentEvent =
     snapshot === null
@@ -70,6 +75,88 @@ export function BrowserPanel(): ReactNode {
     openAsset(assetId)
     document.querySelector<HTMLElement>('[data-testid="panel-viewer"]')?.focus()
   }
+
+  const showAssetMenu = (asset: AssetView, event: MouseEvent): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    const targetIds = selectedIds.includes(asset.id) ? selectedIds : [asset.id]
+    if (!selectedIds.includes(asset.id)) {
+      setLastClickedId(asset.id)
+      setSelectedIds([asset.id])
+    }
+    const targetAssets = targetIds
+      .map((id) => snapshot?.assets[id])
+      .filter((candidate): candidate is AssetView => candidate !== undefined)
+    const audioAssets = targetAssets.filter((candidate) => candidate.audio !== undefined)
+    const deleteLabel = targetIds.length === 1 ? 'Delete Media' : `Delete ${targetIds.length} Items`
+    const deleteMessage =
+      targetIds.length === 1
+        ? `Delete "${asset.fileName}" from the library? This also removes its timeline clips.`
+        : `Delete ${targetIds.length} items from the library? This also removes their timeline clips.`
+    const deleteAssets = (): void => {
+      if (!window.confirm(deleteMessage)) return
+      void (async () => {
+        try {
+          await Promise.all(targetIds.map((id) => window.api.deleteAsset(id)))
+        } catch (error) {
+          window.alert(`Delete failed: ${error instanceof Error ? error.message : String(error)}`)
+        } finally {
+          // Reconcile even on partial failure: other deletes may have landed
+          // and main has already pruned their clips from the saved sequence.
+          setSelectedIds(selectedIds.filter((id) => !targetIds.includes(id)))
+          await useTimelineStore.getState().load()
+        }
+      })()
+    }
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      items: [
+        {
+          id: 'open-viewer',
+          label: 'Open in Viewer',
+          onSelect: () => openInViewer(asset.id)
+        },
+        {
+          id: 'favorite',
+          label: 'Favorite',
+          onSelect: () => targetIds.forEach((id) => void window.api.setAssetRating(id, 'favorite'))
+        },
+        {
+          id: 'reject',
+          label: 'Reject',
+          danger: true,
+          onSelect: () => targetIds.forEach((id) => void window.api.setAssetRating(id, 'rejected'))
+        },
+        {
+          id: 'clear-rating',
+          label: 'Clear Rating',
+          onSelect: () => targetIds.forEach((id) => void window.api.setAssetRating(id, 'none'))
+        },
+        {
+          id: 'transcribe',
+          label: 'Transcribe',
+          disabled: audioAssets.length === 0,
+          onSelect: () =>
+            audioAssets.forEach((candidate) => void window.api.transcribeAsset(candidate.id))
+        },
+        {
+          id: 'relink',
+          label: 'Relink',
+          disabled: !asset.missing,
+          onSelect: () => void window.api.relinkAsset(asset.id)
+        },
+        {
+          id: 'delete-media',
+          label: deleteLabel,
+          danger: true,
+          onSelect: deleteAssets
+        }
+      ]
+    })
+  }
+
+  const closeContextMenu = useCallback((): void => setContextMenu(null), [])
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (selectedIds.length === 0) return
@@ -123,9 +210,18 @@ export function BrowserPanel(): ReactNode {
           >
             Transcript
           </button>
+          <button
+            type="button"
+            className={tab === 'silence' ? 'active' : ''}
+            data-testid="browser-tab-silence"
+            onClick={() => setTab('silence')}
+          >
+            Silence
+          </button>
         </span>
       </header>
       {tab === 'transcript' && <TranscriptPanel />}
+      {tab === 'silence' && <SilencePanel onClose={() => setTab('clips')} />}
       {tab === 'clips' && (
         <>
           <div className="panel-toolbar">
@@ -199,6 +295,7 @@ export function BrowserPanel(): ReactNode {
                       selected={selectedIds.includes(asset.id)}
                       onSelect={(event) => selectAsset(asset, event)}
                       onOpen={() => openInViewer(asset.id)}
+                      onContextMenu={(event) => showAssetMenu(asset, event)}
                     />
                   ))}
                 </div>
@@ -212,6 +309,7 @@ export function BrowserPanel(): ReactNode {
                         data-rating={asset.rating}
                         className={selectedIds.includes(asset.id) ? 'selected' : ''}
                         onClick={(event) => selectAsset(asset, event)}
+                        onContextMenu={(event) => showAssetMenu(asset, event)}
                       >
                         <td>{asset.fileName}</td>
                         <td>{formatDurationFlicks(asset.durationFlicks)}</td>
@@ -223,6 +321,7 @@ export function BrowserPanel(): ReactNode {
               )}
             </div>
           </div>
+          <ContextMenu menu={contextMenu} onClose={closeContextMenu} />
         </>
       )}
     </section>
