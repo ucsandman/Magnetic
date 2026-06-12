@@ -5,6 +5,7 @@ import { playbackEngine } from '../playback/engine'
 import { goToSequenceEnd, seekSequence, toggleSequencePlayback } from '../playback/transport'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
+import { TimecodeInput } from './TimecodeInput'
 
 /**
  * The viewer's sequence mode: a WebGL2 compositor canvas driven by the
@@ -59,9 +60,13 @@ export function SequencePlayer(): ReactNode {
         </span>
       </header>
       <div className="panel-toolbar">
-        <span className="viewer-tc" data-testid="sequence-timecode">
-          {flicksToTimecode(playheadFlicks, fps)}
-        </span>
+        <TimecodeInput
+          display={flicksToTimecode(playheadFlicks, fps)}
+          fps={fps}
+          durationFlicks={sequence === null ? 0 : sequenceDuration(sequence)}
+          onSeek={(flicks) => seekSequence(sequence, snapshot, flicks)}
+          testId="sequence-timecode"
+        />
         <span className="spacer" />
         <span data-testid="sequence-playing">{isPlaying ? 'playing' : 'paused'}</span>
       </div>

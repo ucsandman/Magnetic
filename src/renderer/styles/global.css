@@ -630,6 +630,34 @@ select,
   color: var(--color-text-dim);
 }
 
+.viewer-tc-editable {
+  cursor: text;
+}
+
+.viewer-tc-input {
+  width: 12ch;
+  padding: 0 2px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  outline: none;
+}
+
+.viewer-tc-input.is-invalid {
+  border-color: #d04444;
+  color: #d04444;
+  animation: tc-shake 0.18s linear;
+}
+
+@keyframes tc-shake {
+  25% {
+    translate: -2px 0;
+  }
+  75% {
+    translate: 2px 0;
+  }
+}
+
 .viewer-name {
   color: var(--color-text-dim);
   font-size: var(--font-size-small);

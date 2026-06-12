@@ -252,6 +252,73 @@ test('loop playback: Ctrl+L toggles, sequence wraps at the end and keeps playing
   await app.close()
 })
 
+test('timecode entry: click-to-type seeks, Escape cancels, garbage rejects visibly', async () => {
+  test.setTimeout(240_000)
+  const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-ux-tc-'))
+  const app = await launchApp(join(tempRoot, 'UxTc.mglib'))
+  const page = await app.firstWindow()
+  await importFixtures(page, ['bars-1080p30.mp4']) // 10 s fixture
+
+  // one-clip sequence, sequence mode, paused at 0
+  await page.getByTestId('asset-cell-bars-1080p30.mp4').click()
+  await page.keyboard.press('e')
+  await page.keyboard.press(' ')
+  await expect(page.getByTestId('viewer-mode')).toHaveText('sequence')
+  await page.getByTestId('sequence-play-pause').click()
+  await page.getByTestId('sequence-go-start').click()
+
+  const input = page.getByTestId('timecode-input')
+
+  // click-to-edit: full timecode seeks the playhead
+  await page.getByTestId('sequence-timecode').click()
+  await expect(input).toBeVisible()
+  await expect(input).toHaveValue('00:00:00:00') // prefilled
+  await input.fill('00:00:02:00')
+  await input.press('Enter')
+  await expect(page.getByTestId('sequence-timecode')).toHaveText('00:00:02:00')
+
+  // bare digit pairs parse right-to-left (500 -> 5 s 00 f)
+  await page.getByTestId('sequence-timecode').click()
+  await input.fill('500')
+  await input.press('Enter')
+  await expect(page.getByTestId('sequence-timecode')).toHaveText('00:00:05:00')
+
+  // Escape cancels without seeking
+  await page.getByTestId('sequence-timecode').click()
+  await input.fill('00:00:09:00')
+  await input.press('Escape')
+  await expect(page.getByTestId('sequence-timecode')).toHaveText('00:00:05:00')
+
+  // invalid input: stays open with error styling; shortcuts stay suppressed
+  await page.getByTestId('sequence-timecode').click()
+  await input.fill('abc')
+  await input.press('Enter')
+  await expect(input).toBeVisible()
+  await expect(input).toHaveClass(/is-invalid/)
+  await input.press('l') // would play if the input did not suppress shortcuts
+  await expect(page.getByTestId('sequence-playing')).toHaveText('paused')
+  await input.press('Escape')
+  await expect(page.getByTestId('sequence-timecode')).toHaveText('00:00:05:00')
+
+  // entries beyond the sequence clamp to its end (10 s fixture)
+  await page.getByTestId('sequence-timecode').click()
+  await input.fill('00:09:00:00')
+  await input.press('Enter')
+  await expect(page.getByTestId('sequence-timecode')).toHaveText('00:00:10:00')
+
+  // source viewer timecode seeks the media the same way
+  await page.getByTestId('asset-cell-bars-1080p30.mp4').dblclick()
+  await expect(page.getByTestId('viewer-video')).toBeVisible()
+  await page.getByTestId('viewer-timecode').click()
+  await input.fill('00:00:03:00')
+  await input.press('Enter')
+  await expect
+    .poll(() => page.getByTestId('viewer-timecode').innerText(), { timeout: 10_000 })
+    .toBe('00:00:03:00')
+
+  await app.close()
+})
+
 test('layout: splitter drag resizes the browser, Reset Layout restores defaults, Shift+Z fits', async () => {
   test.setTimeout(240_000)
   const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-ux-layout-'))

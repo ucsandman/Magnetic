@@ -8,6 +8,7 @@ import {
   formatDurationFlicks,
   frameToFlicks,
   parseRational,
+  parseTimecode,
   secondsToFlicks,
   type Rational
 } from './timecode'
@@ -68,6 +69,40 @@ describe('timecode', () => {
     expect(flicksToTimecode(frameToFlicks(30 * 3600, fps30), fps30)).toBe('01:00:00:00')
     const ntsc: Rational = { num: 30000, den: 1001 }
     expect(flicksToTimecode(frameToFlicks(30, ntsc), ntsc)).toBe('00:00:01:00')
+  })
+
+  it('parses typed timecode: colon fields right-to-left FF, SS, MM, HH', () => {
+    const fps30: Rational = { num: 30, den: 1 }
+    expect(parseTimecode('00:01:02:12', fps30)).toBe(frameToFlicks((60 + 2) * 30 + 12, fps30))
+    expect(parseTimecode('1:02:12', fps30)).toBe(frameToFlicks((60 + 2) * 30 + 12, fps30))
+    expect(parseTimecode('02:12', fps30)).toBe(frameToFlicks(2 * 30 + 12, fps30))
+    expect(parseTimecode(' 00:00:02:00 ', fps30)).toBe(frameToFlicks(60, fps30))
+  })
+
+  it('parses typed timecode: bare digit runs in right-to-left pairs', () => {
+    const fps30: Rational = { num: 30, den: 1 }
+    expect(parseTimecode('1234', fps30)).toBe(frameToFlicks(12 * 30 + 34, fps30))
+    expect(parseTimecode('12', fps30)).toBe(frameToFlicks(12, fps30))
+    expect(parseTimecode('10203', fps30)).toBe(frameToFlicks((60 + 2) * 30 + 3, fps30))
+  })
+
+  it('normalizes overflowing timecode fields via frame math', () => {
+    const fps30: Rational = { num: 30, den: 1 }
+    expect(parseTimecode('90', fps30)).toBe(frameToFlicks(90, fps30)) // = 3 s
+    expect(flicksToTimecode(parseTimecode('90', fps30)!, fps30)).toBe('00:00:03:00')
+    expect(flicksToTimecode(parseTimecode('0:90:00', fps30)!, fps30)).toBe('00:01:30:00')
+  })
+
+  it('rejects garbage timecode input', () => {
+    const fps30: Rational = { num: 30, den: 1 }
+    for (const bad of ['', '  ', 'abc', '-3', '1:2:3:4:5', '123456789', '1:a2', '1..2']) {
+      expect(parseTimecode(bad, fps30)).toBeNull()
+    }
+  })
+
+  it('parses typed timecode at NTSC rates with exact frame flicks', () => {
+    const ntsc: Rational = { num: 30000, den: 1001 }
+    expect(parseTimecode('00:00:01:00', ntsc)).toBe(frameToFlicks(30, ntsc))
   })
 
   it('formats durations as m:ss', () => {

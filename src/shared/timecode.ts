@@ -57,6 +57,36 @@ export function flicksToTimecode(flicks: number, fps: Rational): string {
   return [hh, mm, ss, ff].map((part) => String(part).padStart(2, '0')).join(':')
 }
 
+/**
+ * Parse user-typed timecode into flicks (FCP style). Two accepted shapes:
+ * - colon-separated fields read right-to-left as FF, SS, MM, HH
+ *   ("1:02:12" → 1 m 2 s 12 f)
+ * - a bare digit run read right-to-left in pairs into the same fields
+ *   ("1234" → 12 s 34 f, "90" → 90 f)
+ * Overflowing fields normalize via frame math (90 f @ 30 fps → 3 s).
+ * Returns null for anything else; clamping to a duration is the caller's job.
+ */
+export function parseTimecode(text: string, fps: Rational): number | null {
+  const trimmed = text.trim()
+  let fields: number[]
+  if (/^\d+(:\d+)+$/.test(trimmed)) {
+    fields = trimmed.split(':').map((part) => Number.parseInt(part, 10))
+  } else if (/^\d+$/.test(trimmed)) {
+    fields = []
+    for (let end = trimmed.length; end > 0; end -= 2) {
+      fields.unshift(Number.parseInt(trimmed.slice(Math.max(0, end - 2), end), 10))
+    }
+  } else {
+    return null
+  }
+  if (fields.length > 4) return null
+  while (fields.length < 4) fields.unshift(0)
+  const [hh, mm, ss, ff] = fields
+  const nominalFps = Math.round(fps.num / fps.den)
+  const totalFrames = ((hh * 60 + mm) * 60 + ss) * nominalFps + ff
+  return frameToFlicks(totalFrames, fps)
+}
+
 /** Format a duration as m:ss (rounded to the nearest second), e.g. 0:10, 1:05. */
 export function formatDurationFlicks(flicks: number): string {
   const totalSeconds = Math.round(flicksToSeconds(flicks))

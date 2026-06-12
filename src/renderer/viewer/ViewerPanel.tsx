@@ -14,6 +14,7 @@ import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 import { GridPlayer } from './GridPlayer'
 import { SequencePlayer } from './SequencePlayer'
+import { TimecodeInput } from './TimecodeInput'
 import { useMediaUrl } from './use-media-url'
 
 const MAX_RATE = 8
@@ -389,9 +390,13 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
         <span className="panel-header-note">non-drop TC</span>
       </header>
       <div className="panel-toolbar viewer-toolbar">
-        <span className="viewer-tc" data-testid="viewer-timecode">
-          {timecode}
-        </span>
+        <TimecodeInput
+          display={timecode}
+          fps={fps}
+          durationFlicks={durationFlicks}
+          onSeek={(flicks) => seekToFlicks(flicks)}
+          testId="viewer-timecode"
+        />
         <span className="spacer" />
         <span className="viewer-name">{asset.fileName}</span>
         <span className="spacer" />
