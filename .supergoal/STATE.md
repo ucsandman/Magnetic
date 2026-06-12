@@ -1,7 +1,7 @@
 # STATE — UX round 2 run
 
-**Status:** IN_PROGRESS
-**Current phase:** 7
+**Status:** COMPLETE — final audit passed 2026-06-12 (coverage 89% re-verified; deliverables 15/15; full suite 377 unit + 35/35 E2E in one run)
+**Current phase:** done
 **Baseline ref:** 422994f82ae70027e31b203c5580525ae0332b7a
 **Total phases:** 7
 
@@ -12,7 +12,7 @@
 - [x] 4 — Audio meter (DONE: 368 unit, E2E 7/7 twice, committed; E2E play-race de-raced)
 - [x] 5 — Viewer fullscreen (DONE: real enter/exit path E2E-verified, committed)
 - [x] 6 — Timeline minimap + follow-playhead (DONE: 377 unit, E2E 11/11, perf 1.3ms median; strip at bottom by design; committed)
-- [ ] 7 — Polish & Harden
+- [x] 7 — Polish & Harden (DONE: docs+table+evidence; ONE-run gates green: 377 unit, 35/35 E2E 8.6m; cleanliness clean)
 
 ## Notable events
 - 2026-06-12 — Run created from spec 422994f; prior COMPLETE run archived to .supergoal/archive/run-2026-06-11-fcp-replica/.
