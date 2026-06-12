@@ -10,32 +10,41 @@ import {
   type Rational
 } from '../../shared/timecode'
 import { registerShortcut } from '../shortcuts'
-import { needsProxy } from '../playback/sessions'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
+import { GridPlayer } from './GridPlayer'
 import { SequencePlayer } from './SequencePlayer'
+import { useMediaUrl } from './use-media-url'
 
 const MAX_RATE = 8
 const FALLBACK_FPS: Rational = { num: 25, den: 1 }
 
 export function ViewerPanel(): ReactNode {
-  const { snapshot, openedAssetId } = useLibrary()
+  const { snapshot, openedAssetId, gridAssetIds, selectedIds, openAsset, autoplayAssetId } =
+    useLibrary()
   const viewerMode = useTimelineStore((state) => state.viewerMode)
   const previousAssetRef = useRef(openedAssetId)
-  // opening a (different) source clip pulls the single viewer back to source mode
+  // opening a (different) source clip pulls the single viewer back to source
+  // mode — as does re-opening the current one with autoplay (play-selection)
   useEffect(() => {
-    if (openedAssetId !== null && openedAssetId !== previousAssetRef.current) {
+    if (
+      openedAssetId !== null &&
+      (openedAssetId !== previousAssetRef.current || autoplayAssetId === openedAssetId)
+    ) {
       useTimelineStore.getState().setViewerMode('source')
     }
     previousAssetRef.current = openedAssetId
-  }, [openedAssetId])
+  }, [openedAssetId, autoplayAssetId])
 
   const asset =
     openedAssetId !== null && snapshot !== null ? (snapshot.assets[openedAssetId] ?? null) : null
 
+  if (gridAssetIds !== null) return <GridPlayer assetIds={gridAssetIds} />
+
   if (viewerMode === 'sequence') return <SequencePlayer />
 
   if (asset === null) {
+    const playable = selectedIds.length > 0
     return (
       <section className="panel panel-viewer" data-testid="panel-viewer" tabIndex={0}>
         <header className="panel-header">Viewer</header>
@@ -44,8 +53,23 @@ export function ViewerPanel(): ReactNode {
         </div>
         <div className="panel-body">
           <div className="viewer-screen">
-            <span data-testid="viewer-selected">No clip open — double-click a clip</span>
+            <span data-testid="viewer-selected">
+              {playable
+                ? 'Press play to watch the selected clip'
+                : 'No clip open — select or double-click a clip'}
+            </span>
           </div>
+        </div>
+        <div className="viewer-transport">
+          <button
+            type="button"
+            data-testid="viewer-play-pause"
+            title={playable ? 'Play the selected clip (Space)' : 'Select a clip to play'}
+            disabled={!playable}
+            onClick={() => openAsset(selectedIds[0], { autoplay: true })}
+          >
+            ▶
+          </button>
         </div>
       </section>
     )
@@ -56,17 +80,15 @@ export function ViewerPanel(): ReactNode {
 type PlayState = 'paused' | 'forward' | 'reverse'
 
 function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
-  const { setMarkedRange, skimTarget } = useLibrary()
+  const { setMarkedRange, skimTarget, autoplayAssetId, clearAutoplay } = useLibrary()
   const fps = asset.video?.fps ?? FALLBACK_FPS
   const durationFlicks = asset.durationFlicks
-  const proxyNeeded = needsProxy(asset)
   const sectionRef = useRef<HTMLElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const scrubberRef = useRef<HTMLDivElement>(null)
 
-  const [resolvedProxyUrl, setResolvedProxyUrl] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
-  const sourceUrl = proxyNeeded ? (asset.proxyUrl ?? resolvedProxyUrl ?? '') : asset.mediaUrl
+  const sourceUrl = useMediaUrl(asset)
   const [timecode, setTimecode] = useState('00:00:00:00')
   const [positionRatio, setPositionRatio] = useState(0)
   const [playState, setPlayState] = useState<PlayState>('paused')
@@ -160,30 +182,6 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
     [stopReverse, setState, pause]
   )
 
-  useEffect(() => {
-    let disposed = false
-    if (!proxyNeeded || asset.proxyUrl !== undefined) {
-      return () => {
-        disposed = true
-      }
-    }
-    void window.api
-      .ensureProxy(asset.id)
-      .then((url) => {
-        if (!disposed) setResolvedProxyUrl(url)
-      })
-      .catch((error: unknown) => {
-        // Keep the original-media fallback (plays fine for e.g. unusual
-        // containers with h264 inside) but say so — a codec the renderer
-        // cannot decode will hit the <video> onError overlay below.
-        console.error(`preview proxy failed for ${asset.fileName}:`, error)
-        if (!disposed) setResolvedProxyUrl(asset.mediaUrl)
-      })
-    return () => {
-      disposed = true
-    }
-  }, [asset.id, asset.fileName, asset.mediaUrl, asset.proxyUrl, proxyNeeded])
-
   const seekToFlicks = useCallback(
     (flicks: number): void => {
       const video = videoRef.current
@@ -216,6 +214,24 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
     return frameToFlicks(flicksToFrame(secondsToFlicks(video.currentTime), fps), fps)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fps stable per asset
   }, [])
+
+  // Autoplay (placeholder ▶ or Space with a browser selection): start as
+  // soon as the media can play.
+  useEffect(() => {
+    if (autoplayAssetId !== asset.id) return
+    const video = videoRef.current
+    if (video === null) return
+    const start = (): void => {
+      clearAutoplay()
+      playForward(1)
+    }
+    if (video.readyState >= 2) {
+      start()
+      return
+    }
+    video.addEventListener('canplay', start, { once: true })
+    return () => video.removeEventListener('canplay', start)
+  }, [autoplayAssetId, asset.id, clearAutoplay, playForward])
 
   // Publish I/O marks so timeline edit commands (E/W/Q/D) can use the range.
   useEffect(() => {
@@ -292,6 +308,21 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
         when: focused,
         handler: () => stepFrames(10)
       }),
+      registerShortcut('viewer-home', {
+        combo: 'home',
+        description: 'Go to the start of the clip',
+        when: focused,
+        handler: () => seekToFlicks(0)
+      }),
+      registerShortcut('viewer-end', {
+        combo: 'end',
+        description: 'Go to the end of the clip',
+        when: focused,
+        handler: () => {
+          pause()
+          seekToFlicks(durationFlicks - 1)
+        }
+      }),
       registerShortcut('viewer-mark-in', {
         combo: 'i',
         description: 'Mark in point',
@@ -323,7 +354,15 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
       })
     ]
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
-  }, [playForward, playReverse, pause, stepFrames, seekToFlicks, currentFrameFlicks])
+  }, [
+    playForward,
+    playReverse,
+    pause,
+    stepFrames,
+    seekToFlicks,
+    currentFrameFlicks,
+    durationFlicks
+  ])
 
   const onScrub = (event: PointerEvent<HTMLDivElement>): void => {
     const scrubber = scrubberRef.current
@@ -406,17 +445,36 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
         <div className="viewer-playhead" style={{ left: `${positionRatio * 100}%` }} />
       </div>
       <div className="viewer-transport">
-        <button type="button" data-testid="viewer-step-back" onClick={() => stepFrames(-1)}>
+        <button
+          type="button"
+          data-testid="viewer-go-start"
+          title="Go to start (Home)"
+          onClick={() => seekToFlicks(0)}
+        >
+          ⇤
+        </button>
+        <button
+          type="button"
+          data-testid="viewer-step-back"
+          title="Step back one frame (←)"
+          onClick={() => stepFrames(-1)}
+        >
           ⏮
         </button>
         <button
           type="button"
           data-testid="viewer-play-pause"
+          title="Play / pause (Space)"
           onClick={() => (playState === 'paused' ? playForward(1) : pause())}
         >
           {playState === 'paused' ? '▶' : '⏸'}
         </button>
-        <button type="button" data-testid="viewer-step-fwd" onClick={() => stepFrames(1)}>
+        <button
+          type="button"
+          data-testid="viewer-step-fwd"
+          title="Step forward one frame (→)"
+          onClick={() => stepFrames(1)}
+        >
           ⏭
         </button>
         <span className="transport-sep" />

@@ -23,7 +23,7 @@ type RatingFilter = 'all' | 'favorites' | 'hideRejected'
 type ViewMode = 'grid' | 'list'
 
 export function BrowserPanel(): ReactNode {
-  const { snapshot, selectedIds, setSelectedIds, openAsset } = useLibrary()
+  const { snapshot, selectedIds, setSelectedIds, openAsset, setGridAssetIds } = useLibrary()
   const [tab, setTab] = useState<'clips' | 'transcript' | 'silence'>('clips')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<RatingFilter>('all')
@@ -254,6 +254,20 @@ export function BrowserPanel(): ReactNode {
             >
               {view === 'grid' ? 'List' : 'Grid'}
             </button>
+            {selectedIds.length >= 2 && (
+              <button
+                type="button"
+                data-testid="browser-grid-preview"
+                title={
+                  selectedIds.length > 9
+                    ? 'Watch the first 9 selected clips side by side'
+                    : 'Watch the selected clips side by side'
+                }
+                onClick={() => setGridAssetIds(selectedIds.slice(0, 9))}
+              >
+                Watch {Math.min(selectedIds.length, 9)}
+              </button>
+            )}
           </div>
           {importErrors.length > 0 && (
             <div className="import-errors" data-testid="import-errors">

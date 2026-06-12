@@ -20,7 +20,13 @@ interface LibraryContextValue {
   setSelectedIds(ids: string[]): void
   /** Asset currently loaded in the viewer. */
   openedAssetId: string | null
-  openAsset(id: string | null): void
+  openAsset(id: string | null, options?: { autoplay?: boolean }): void
+  /** Set when openAsset requested autoplay; the viewer consumes it on load. */
+  autoplayAssetId: string | null
+  clearAutoplay(): void
+  /** Assets shown in the multi-clip review grid; null = grid closed. */
+  gridAssetIds: string[] | null
+  setGridAssetIds(ids: string[] | null): void
   markedRange: MarkedRange | null
   setMarkedRange(range: MarkedRange | null): void
   skimTarget: SkimTarget | null
@@ -33,6 +39,8 @@ export function LibraryProvider({ children }: { children: ReactNode }): ReactNod
   const [snapshot, setSnapshot] = useState<LibrarySnapshot | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [openedAssetId, setOpenedAssetId] = useState<string | null>(null)
+  const [autoplayAssetId, setAutoplayAssetId] = useState<string | null>(null)
+  const [gridAssetIds, setGridAssetIds] = useState<string[] | null>(null)
   const [markedRange, setMarkedRange] = useState<MarkedRange | null>(null)
   const [skimTarget, setSkimTarget] = useState<SkimTarget | null>(null)
 
@@ -54,13 +62,21 @@ export function LibraryProvider({ children }: { children: ReactNode }): ReactNod
       selectedIds,
       setSelectedIds,
       openedAssetId,
-      openAsset: setOpenedAssetId,
+      openAsset: (id: string | null, options?: { autoplay?: boolean }) => {
+        setOpenedAssetId(id)
+        setAutoplayAssetId(options?.autoplay === true ? id : null)
+        setGridAssetIds(null) // opening a clip leaves the review grid
+      },
+      autoplayAssetId,
+      clearAutoplay: () => setAutoplayAssetId(null),
+      gridAssetIds,
+      setGridAssetIds,
       markedRange,
       setMarkedRange,
       skimTarget,
       setSkimTarget
     }),
-    [snapshot, selectedIds, openedAssetId, markedRange, skimTarget]
+    [snapshot, selectedIds, openedAssetId, autoplayAssetId, gridAssetIds, markedRange, skimTarget]
   )
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>
 }

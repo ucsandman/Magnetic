@@ -37,7 +37,9 @@ Everything else below is refinement of those seven steps.
 
 ## 3. The Viewer: review before you edit
 
-Double-click any clip in the browser to open it.
+Double-click any clip in the browser to open it — or just select it and press `Space` (or the ▶ button under the viewer): the clip opens and plays immediately. The bar under the picture has go-to-start, play/pause, and frame-step buttons, so nothing requires the keyboard.
+
+**Compare takes side by side:** select two or more clips (`Shift`-click) and press the **Watch N** button in the browser toolbar. Up to 9 clips play at once in a grid — click a cell to hear its audio, click again to mute, and double-click the winner to open it in the viewer. `Esc` closes the grid.
 
 | Key                   | Action                                                    |
 | --------------------- | --------------------------------------------------------- |
@@ -47,6 +49,7 @@ Double-click any clip in the browser to open it.
 | `K`                   | Pause                                                     |
 | `←` / `→`             | Step exactly one frame (frame-accurate at any frame rate) |
 | `Shift+←` / `Shift+→` | Step 10 frames                                            |
+| `Home` / `End`        | Jump to the start / end of the clip                       |
 | `I` / `O`             | Mark in / out                                             |
 | `X`                   | Clear marks                                               |
 
@@ -78,8 +81,8 @@ You can also drag a clip from the browser straight onto the timeline.
 
 ### Getting around
 
-- `Space` play/pause · `Home`/`End` jump to start/end · click the ruler to move the playhead.
-- `=` / `-` zoom in/out. `S` toggles **skimming** (the preview follows your mouse across the timeline — great for hunting a moment, distracting when fine-trimming, so toggle it).
+- `Space` play/pause · `Home`/`End` jump to start/end · `↑`/`↓` jump between edit points · click the ruler to move the playhead. The sequence viewer has the same controls as buttons under the picture.
+- `=` / `-` zoom in/out, `Shift+Z` zooms to fit the whole sequence. `S` toggles **skimming** (the preview follows your mouse across the timeline — great for hunting a moment, distracting when fine-trimming, so toggle it).
 - `N` toggles **snapping** — drags and trims click onto clip edges and the playhead. Turn it off for sub-frame nudging.
 - Drag a clip's body to rearrange the spine; the other clips shuffle around it magnetically.
 
@@ -187,7 +190,7 @@ For platforms that want caption files instead of burned-in text, the Captions ta
 
 - **Export SRT…** writes a numbered SubRip file (`HH:MM:SS,mmm`, CRLF) — accepted by YouTube, Premiere, Resolve, and most players.
 - **Export VTT…** writes a WebVTT file (`HH:MM:SS.mmm`) for the web.
-- Leave **Save to** empty to pick the destination in a save dialog, or type a path directly. The file reflects the cues of your *current* cut at the moment you export.
+- Leave **Save to** empty to pick the destination in a save dialog, or type a path directly. The file reflects the cues of your _current_ cut at the moment you export.
 
 ---
 
@@ -198,7 +201,7 @@ For platforms that want caption files instead of burned-in text, the Captions ta
 - **Presets**: 1080p, 720p, or source resolution — H.264/AAC MP4, plays everywhere.
 - Progress is shown frame-by-frame and **Cancel** is safe: no partial file is ever left at the destination (the file only appears once the export completes).
 - Export is WYSIWYG — transitions, titles, color, transforms, fades, and the audio mix render exactly as the preview showed, because it's the same compositor.
-- **Smart render**: when the video track is one asset, possibly trimmed but visually untouched, the dialog shows *Smart render — video passthrough* and copies the original H.264 bitstream instead of re-encoding it — a multi-hour VOD exports at roughly disk speed, and only the audio mix is rendered. Conditions: a single source clip (blade cuts that were never moved still count), no gaps, transitions, titles, or connected video, captions off, and every video/color adjustment at its default with no keyframes. Volume, fades, pan, detached audio, and connected music clips are fine — audio is always freshly mixed. The 720p preset needs scaling, so it always re-encodes. One caveat: the cut-in snaps to the nearest preceding keyframe of the source, so the export can start up to one GOP (typically ≤ a few seconds) before your exact in-point.
+- **Smart render**: when the video track is one asset, possibly trimmed but visually untouched, the dialog shows _Smart render — video passthrough_ and copies the original H.264 bitstream instead of re-encoding it — a multi-hour VOD exports at roughly disk speed, and only the audio mix is rendered. Conditions: a single source clip (blade cuts that were never moved still count), no gaps, transitions, titles, or connected video, captions off, and every video/color adjustment at its default with no keyframes. Volume, fades, pan, detached audio, and connected music clips are fine — audio is always freshly mixed. The 720p preset needs scaling, so it always re-encodes. One caveat: the cut-in snaps to the nearest preceding keyframe of the source, so the export can start up to one GOP (typically ≤ a few seconds) before your exact in-point.
 
 ### Long recordings
 
@@ -228,6 +231,7 @@ The full table lives in the [README](../README.md#keyboard-shortcuts) and behind
 | **⚠ Relink** badge                      | The media file moved or was deleted. Click the badge and select the file in its new location (duration must match ±1 frame).              |
 | `Ctrl+T` adds no transition             | No handle media at that cut — trim both sides in slightly so the transition has frames to overlap.                                        |
 | Keys do nothing                         | Focus is in a text field (search, inspector, title text) — shortcuts suspend while typing. Press `Escape` to return focus to the browser. |
+| Panels squished or the wrong size       | Drag the dividers between panels to resize them, double-click a divider to reset that one, or press **Reset Layout** in the top bar.      |
 | `J` doesn't play the timeline backwards | Reverse playback is viewer-only; in the timeline `J` pauses.                                                                              |
 | 4K stutters                             | Expected at this stage — 1080p H.264 is the smooth path; 4K plays at degraded fidelity.                                                   |
 

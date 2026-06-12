@@ -1,6 +1,8 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { flicksToTimecode } from '../../shared/timecode'
+import { sequenceDuration, spineEditPoints } from '../../shared/timeline/model'
 import { playbackEngine } from '../playback/engine'
+import { goToSequenceEnd, seekSequence, toggleSequencePlayback } from '../playback/transport'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 
@@ -46,6 +48,7 @@ export function SequencePlayer(): ReactNode {
   }, [sequence])
 
   const fps = sequence?.fps ?? { num: 30, den: 1 }
+  const empty = sequence === null || sequenceDuration(sequence) === 0
   return (
     <section className="panel panel-viewer" data-testid="panel-viewer" tabIndex={0}>
       <header className="panel-header">
@@ -63,6 +66,65 @@ export function SequencePlayer(): ReactNode {
       </div>
       <div className="panel-body">
         <canvas ref={canvasRef} className="sequence-canvas" data-testid="sequence-canvas" />
+      </div>
+      <div className="viewer-transport">
+        <button
+          type="button"
+          data-testid="sequence-go-start"
+          title="Go to start (Home)"
+          disabled={empty}
+          onClick={() => seekSequence(sequence, snapshot, 0)}
+        >
+          ⇤
+        </button>
+        <button
+          type="button"
+          data-testid="sequence-prev-edit"
+          title="Previous edit point (↑)"
+          disabled={empty}
+          onClick={() => {
+            if (sequence === null) return
+            const playhead = useTimelineStore.getState().playheadFlicks
+            const prev = spineEditPoints(sequence)
+              .reverse()
+              .find((point) => point < playhead)
+            if (prev !== undefined) seekSequence(sequence, snapshot, prev)
+          }}
+        >
+          ⏮
+        </button>
+        <button
+          type="button"
+          data-testid="sequence-play-pause"
+          title="Play / pause the sequence (Space)"
+          disabled={empty}
+          onClick={() => toggleSequencePlayback(sequence, snapshot)}
+        >
+          {isPlaying ? '⏸' : '▶'}
+        </button>
+        <button
+          type="button"
+          data-testid="sequence-next-edit"
+          title="Next edit point (↓)"
+          disabled={empty}
+          onClick={() => {
+            if (sequence === null) return
+            const playhead = useTimelineStore.getState().playheadFlicks
+            const next = spineEditPoints(sequence).find((point) => point > playhead)
+            if (next !== undefined) seekSequence(sequence, snapshot, next)
+          }}
+        >
+          ⏭
+        </button>
+        <button
+          type="button"
+          data-testid="sequence-go-end"
+          title="Go to end (End)"
+          disabled={empty}
+          onClick={() => goToSequenceEnd(sequence)}
+        >
+          ⇥
+        </button>
       </div>
     </section>
   )

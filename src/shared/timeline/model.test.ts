@@ -4,6 +4,7 @@ import {
   connectedStartOf,
   emptySequence,
   sequenceDuration,
+  spineEditPoints,
   spineStartOf,
   type Clip,
   type GapClip,
@@ -60,6 +61,15 @@ describe('derived spine positions', () => {
     expect(clipAtTime(s, 10 * F)?.id).toBe('b')
     expect(clipAtTime(s, 20 * F)).toBeNull() // end is exclusive
     expect(clipAtTime(s, -1)).toBeNull()
+  })
+
+  it('spineEditPoints lists 0, every boundary, and the end', () => {
+    const s = seq([clip('a', 10), gap('g', 5), clip('b', 20)])
+    expect(spineEditPoints(s)).toEqual([0, 10 * F, 15 * F, 35 * F])
+  })
+
+  it('spineEditPoints of an empty sequence is just the origin', () => {
+    expect(spineEditPoints(emptySequence('s', FPS))).toEqual([0])
   })
 
   it('connectedStartOf is parent start plus offset', () => {

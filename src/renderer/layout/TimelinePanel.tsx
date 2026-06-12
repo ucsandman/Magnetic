@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { flicksToTimecode } from '../../shared/timecode'
-import { sequenceDuration } from '../../shared/timeline/model'
+import { spineEditPoints } from '../../shared/timeline/model'
 import { playbackEngine } from '../playback/engine'
+import { goToSequenceEnd, seekSequence, toggleSequencePlayback } from '../playback/transport'
 import { isEditableTarget, registerShortcut } from '../shortcuts'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore, type SourceClip } from '../state/timeline-store'
 import { TimelineCanvas } from '../timeline/TimelineCanvas'
 
+// Space/JKL/Home/End belong to the source viewer while it is focused; the
+// sequence (timeline) owns them otherwise, and always in sequence mode.
+function sourceViewerNotFocused(): boolean {
+  if (useTimelineStore.getState().viewerMode === 'sequence') return true
+  const viewer = document.querySelector('[data-testid="panel-viewer"]')
+  return !(viewer?.contains(document.activeElement) ?? false)
+}
+
 export function TimelinePanel(): ReactNode {
-  const { snapshot, selectedIds, markedRange } = useLibrary()
+  const { snapshot, selectedIds, markedRange, openAsset } = useLibrary()
   const sequence = useTimelineStore((state) => state.sequence)
   const playheadFlicks = useTimelineStore((state) => state.playheadFlicks)
   const snapping = useTimelineStore((state) => state.snapping)
@@ -34,40 +43,40 @@ export function TimelinePanel(): ReactNode {
   useEffect(() => {
     snapshotRef.current = snapshot
   }, [snapshot])
+  const selectedIdsRef = useRef(selectedIds)
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds
+  }, [selectedIds])
+  const openAssetRef = useRef(openAsset)
+  useEffect(() => {
+    openAssetRef.current = openAsset
+  }, [openAsset])
 
   // Sequence transport: space toggles, L plays, K/J pause (no reverse decode).
   // Gated off while the SOURCE viewer is focused — its own JKL applies there.
   useEffect(() => {
     const togglePlayback = (): void => {
       const store = useTimelineStore.getState()
-      if (playbackEngine.isPlaying) {
-        playbackEngine.pause()
-        return
+      if (toggleSequencePlayback(store.sequence, snapshotRef.current)) return
+      // Nothing on the timeline: play the browser selection instead of
+      // going dead (FCP plays the browser selection from the browser).
+      const selectedId = selectedIdsRef.current[0]
+      if (selectedId !== undefined) {
+        openAssetRef.current(selectedId, { autoplay: true })
+        document.querySelector<HTMLElement>('[data-testid="panel-viewer"]')?.focus()
       }
-      const sequence = store.sequence
-      const snap = snapshotRef.current
-      if (sequence === null || snap === null || sequenceDuration(sequence) === 0) return
-      store.setViewerMode('sequence')
-      const total = sequenceDuration(sequence)
-      const from = store.playheadFlicks >= total ? 0 : store.playheadFlicks
-      void playbackEngine.play(sequence, snap, from)
-    }
-    const gate = (): boolean => {
-      if (useTimelineStore.getState().viewerMode === 'sequence') return true
-      const viewer = document.querySelector('[data-testid="panel-viewer"]')
-      return !(viewer?.contains(document.activeElement) ?? false)
     }
     const unsubscribers = [
       registerShortcut('timeline-play-toggle', {
         combo: 'space',
         description: 'Play / pause the sequence',
-        when: gate,
+        when: sourceViewerNotFocused,
         handler: togglePlayback
       }),
       registerShortcut('timeline-play-l', {
         combo: 'l',
         description: 'Play the sequence',
-        when: gate,
+        when: sourceViewerNotFocused,
         handler: () => {
           if (!playbackEngine.isPlaying) togglePlayback()
         }
@@ -75,13 +84,13 @@ export function TimelinePanel(): ReactNode {
       registerShortcut('timeline-pause-k', {
         combo: 'k',
         description: 'Pause the sequence',
-        when: gate,
+        when: sourceViewerNotFocused,
         handler: () => playbackEngine.pause()
       }),
       registerShortcut('timeline-pause-j', {
         combo: 'j',
         description: 'Pause the sequence (reverse playback is not supported)',
-        when: gate,
+        when: sourceViewerNotFocused,
         handler: () => playbackEngine.pause()
       })
     ]
@@ -174,14 +183,41 @@ export function TimelinePanel(): ReactNode {
       registerShortcut('timeline-home', {
         combo: 'home',
         description: 'Move the playhead to the start',
-        handler: () => store().setPlayhead(0)
+        when: sourceViewerNotFocused,
+        handler: () => seekSequence(store().sequence, snapshotRef.current, 0)
       }),
       registerShortcut('timeline-end', {
         combo: 'end',
         description: 'Move the playhead to the end',
+        when: sourceViewerNotFocused,
+        handler: () => goToSequenceEnd(store().sequence)
+      }),
+      registerShortcut('timeline-prev-edit', {
+        combo: 'arrowup',
+        description: 'Move the playhead to the previous edit point',
+        when: () =>
+          sourceViewerNotFocused() && !(document.activeElement instanceof HTMLSelectElement),
         handler: () => {
           const seq = store().sequence
-          if (seq !== null) store().setPlayhead(sequenceDuration(seq))
+          if (seq === null) return
+          const playhead = store().playheadFlicks
+          const prev = spineEditPoints(seq)
+            .reverse()
+            .find((point) => point < playhead)
+          if (prev !== undefined) seekSequence(seq, snapshotRef.current, prev)
+        }
+      }),
+      registerShortcut('timeline-next-edit', {
+        combo: 'arrowdown',
+        description: 'Move the playhead to the next edit point',
+        when: () =>
+          sourceViewerNotFocused() && !(document.activeElement instanceof HTMLSelectElement),
+        handler: () => {
+          const seq = store().sequence
+          if (seq === null) return
+          const playhead = store().playheadFlicks
+          const next = spineEditPoints(seq).find((point) => point > playhead)
+          if (next !== undefined) seekSequence(seq, snapshotRef.current, next)
         }
       }),
       registerShortcut('timeline-undo', {

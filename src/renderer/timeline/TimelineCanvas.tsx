@@ -14,6 +14,7 @@ import { itemAtTime, spineStartIndex } from '../../shared/timeline/magnetic'
 import { collectSnapPoints, snapTime } from '../../shared/timeline/snap'
 import { ContextMenu, type ContextMenuState } from '../context-menu'
 import { playbackEngine } from '../playback/engine'
+import { registerShortcut } from '../shortcuts'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore, type SourceClip } from '../state/timeline-store'
 import { onMediaReady } from './media-cache'
@@ -154,6 +155,27 @@ export function TimelineCanvas(): ReactNode {
   useEffect(() => {
     scheduleDraw()
   }, [snapshot, scheduleDraw])
+
+  // Shift+Z zooms to fit — registered here because the scroll offset lives
+  // in this component's scrollXRef.
+  useEffect(() => {
+    return registerShortcut('timeline-zoom-fit', {
+      combo: 'shift+z',
+      description: 'Zoom the timeline to fit the sequence',
+      handler: () => {
+        const store = useTimelineStore.getState()
+        const container = containerRef.current
+        if (store.sequence === null || container === null) return
+        const durationFlicks = sequenceDuration(store.sequence)
+        const width = container.clientWidth
+        if (durationFlicks === 0 || width <= 0) return
+        // small right margin so the last edit stays grabbable
+        store.setZoom(((width - 24) * FLICKS_PER_SECOND) / durationFlicks)
+        scrollXRef.current = 0
+        scheduleDraw()
+      }
+    })
+  }, [scheduleDraw])
 
   // perf harness driver (test builds call measureDraws via __magneticTimeline)
   useEffect(() => {

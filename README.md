@@ -28,7 +28,9 @@ Magnetic timeline · WebCodecs/WebGL2 playback · edit-by-transcript · auto sil
 
 - **Magnetic timeline** — spine + connected clips, lanes, gap clips, snapping, zoom, skimming; clips never overlap, edits ripple
 - **Edit grammar** — append `E`, insert `W`, connect `Q`, overwrite `D`, ripple delete, lift; select `A` / blade `B` / trim `T` tools; trim ripples, edit points roll, clip bodies slip; drag-rearrange with magnetic collision; full undo/redo
-- **Viewer** — JKL transport (tap again for faster), frame-accurate stepping (`←`/`→`, ±10 with Shift), in/out marks, source/sequence timecode
+- **Viewer** — JKL transport (tap again for faster), frame-accurate stepping (`←`/`→`, ±10 with Shift), in/out marks, source/sequence timecode; transport buttons (go to start, play/pause, step, prev/next edit) in both source and sequence modes, and Space plays the browser selection when nothing else is up
+- **Review grid** — watch up to 9 selected clips side by side (browser "Watch N" button); click a cell for its audio, double-click to open it in the viewer
+- **Resizable layout** — drag the panel splitters (double-click one to reset it); Reset Layout button restores the defaults
 - **Clipboard** — copy/paste/duplicate clips (`Ctrl+C/V/D`), paste-connect (`Ctrl+Shift+V`), paste attributes incl. keyframes (`Ctrl+Alt+V`); one undo step per paste
 - **Keyframe animation** — animate transform, opacity, and color params from the Inspector (linear/smooth easing); diamonds on timeline clips; WYSIWYG in export
 - **Transitions** — cross dissolve, wipe left/right, fade-to-black
@@ -124,7 +126,8 @@ Generated from the live shortcut registry (`scripts/dump-shortcuts.mjs`); `Shift
 | `L`                       | Play forward (again: faster)                                    |
 | `←` / `→`                 | Step back / forward one frame                                   |
 | `Shift+←` / `Shift+→`     | Step back / forward 10 frames                                   |
-| `Home` / `End`            | Move the playhead to the start / end                            |
+| `Home` / `End`            | Go to the start / end (viewer or timeline)                      |
+| `↑` / `↓`                 | Jump to the previous / next edit point                          |
 | `I` / `O` / `X`           | Mark in / mark out / clear in-out points                        |
 | `E`                       | Append browser selection to the spine                           |
 | `W`                       | Insert browser selection at the playhead                        |
@@ -141,12 +144,13 @@ Generated from the live shortcut registry (`scripts/dump-shortcuts.mjs`); `Shift
 | `N`                       | Toggle snapping                                                 |
 | `S`                       | Toggle skimming                                                 |
 | `=` / `-`                 | Zoom the timeline in / out                                      |
+| `Shift+Z`                 | Zoom the timeline to fit the sequence                           |
 | `Ctrl+4`                  | Show or hide the Inspector                                      |
 | `Ctrl+E`                  | Export the sequence as a movie                                  |
 | `Ctrl+Shift+T`            | Show or hide the timeline transcript                            |
 | `Ctrl+Shift+D`            | Show or hide binary diagnostics                                 |
 | `Shift+?`                 | Show the keyboard shortcut overlay                              |
-| `Escape`                  | Return focus to browser                                         |
+| `Escape`                  | Return focus to browser · close the clip grid                   |
 
 ## 🏗️ Architecture
 

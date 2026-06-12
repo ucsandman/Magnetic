@@ -166,6 +166,17 @@ export function sequenceDuration(seq: Sequence): number {
   return total
 }
 
+/** Sorted spine edit points: 0, every item boundary, and the sequence end. */
+export function spineEditPoints(seq: Sequence): number[] {
+  const points = [0]
+  let position = 0
+  for (const item of seq.spine) {
+    position += item.durationFlicks
+    points.push(position)
+  }
+  return points
+}
+
 /** Derived start of a spine item; null if the id is not in the spine. */
 export function spineStartOf(seq: Sequence, itemId: string): number | null {
   let position = 0
