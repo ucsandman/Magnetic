@@ -74,6 +74,12 @@ export default function App(): ReactNode {
         description: 'Export the sequence as a movie',
         handler: () => setExportVisible(true)
       }),
+      registerShortcut('app-exit-fullscreen', {
+        combo: 'escape',
+        description: 'Exit fullscreen',
+        when: () => document.fullscreenElement !== null,
+        handler: () => void document.exitFullscreen().catch(() => undefined)
+      }),
       registerShortcut('app-loop-playback', {
         combo: 'ctrl+l',
         description: 'Loop playback on / off',

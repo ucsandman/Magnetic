@@ -5,7 +5,9 @@ import { playbackEngine } from '../playback/engine'
 import { goToSequenceEnd, seekSequence, toggleSequencePlayback } from '../playback/transport'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
+import { registerShortcut } from '../shortcuts'
 import { AudioMeter } from './AudioMeter'
+import { toggleViewerFullscreen } from './fullscreen'
 import { TimecodeInput } from './TimecodeInput'
 
 /**
@@ -33,6 +35,16 @@ export function SequencePlayer(): ReactNode {
       playbackEngine.detach()
     }
   }, [])
+
+  useEffect(
+    () =>
+      registerShortcut('viewer-fullscreen', {
+        combo: 'shift+f',
+        description: 'Fullscreen viewer',
+        handler: () => toggleViewerFullscreen()
+      }),
+    []
+  )
 
   // paused scrub/seek and edits-while-paused → still render
   useEffect(() => {
@@ -142,6 +154,14 @@ export function SequencePlayer(): ReactNode {
           onClick={() => useTimelineStore.getState().setLoopPlayback(!loopPlayback)}
         >
           🔁
+        </button>
+        <button
+          type="button"
+          data-testid="viewer-fullscreen"
+          title="Fullscreen (Shift+F)"
+          onClick={() => toggleViewerFullscreen()}
+        >
+          ⛶
         </button>
       </div>
     </section>

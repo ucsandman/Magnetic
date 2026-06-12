@@ -427,6 +427,57 @@ test('audio meter: live during tone playback, decays to the floor after pause', 
   await app.close()
 })
 
+test('viewer fullscreen: ⛶ fullscreens the panel, Escape exits, grid mode has no button', async () => {
+  test.setTimeout(240_000)
+  const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-ux-fs-'))
+  const app = await launchApp(join(tempRoot, 'UxFs.mglib'))
+  const page = await app.firstWindow()
+  await importFixtures(page, ['bars-1080p30.mp4', 'red-720p25.mp4'])
+
+  // source viewer: button present; click enters fullscreen (or documented no-op)
+  await page.getByTestId('asset-cell-bars-1080p30.mp4').dblclick()
+  await expect(page.getByTestId('viewer-video')).toBeVisible()
+  await page.getByTestId('viewer-fullscreen').click()
+  const entered = await page
+    .waitForFunction(() => document.fullscreenElement !== null, undefined, { timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (entered) {
+    // the fullscreen element is the viewer panel and the transport stays visible
+    expect(
+      await page.evaluate(() => document.fullscreenElement?.getAttribute('data-testid') ?? 'none')
+    ).toBe('panel-viewer')
+    await expect(page.getByTestId('viewer-fullscreen')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await page.waitForFunction(() => document.fullscreenElement === null, undefined, {
+      timeout: 5_000
+    })
+    console.log('fullscreen path: entered and exited cleanly')
+  } else {
+    // platform denied fullscreen — the documented no-op: app alive, button intact
+    await expect(page.getByTestId('viewer-fullscreen')).toBeVisible()
+    console.log('fullscreen path: denied by harness — no-op asserted')
+  }
+
+  // sequence viewer renders the button too
+  await page.getByTestId('asset-cell-bars-1080p30.mp4').click()
+  await page.keyboard.press('e')
+  await page.keyboard.press(' ')
+  await expect(page.getByTestId('viewer-mode')).toHaveText('sequence')
+  await expect(page.getByTestId('sequence-playing')).toHaveText('playing')
+  await page.getByTestId('sequence-play-pause').click()
+  await expect(page.getByTestId('viewer-fullscreen')).toBeVisible()
+
+  // grid mode: no fullscreen button (Escape belongs to close-grid there)
+  await page.getByTestId('asset-cell-bars-1080p30.mp4').click()
+  await page.getByTestId('asset-cell-red-720p25.mp4').click({ modifiers: ['Shift'] })
+  await page.getByTestId('browser-grid-preview').click()
+  await expect(page.getByTestId('viewer-mode')).toHaveText('grid')
+  await expect(page.getByTestId('viewer-fullscreen')).toHaveCount(0)
+
+  await app.close()
+})
+
 test('layout: splitter drag resizes the browser, Reset Layout restores defaults, Shift+Z fits', async () => {
   test.setTimeout(240_000)
   const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-ux-layout-'))

@@ -773,6 +773,14 @@ select,
   color: #fff;
 }
 
+/* Fullscreen viewer (⛶ / Shift+F): the panel becomes the fullscreen element;
+   the transport stays visible at the bottom (no auto-hide). */
+.panel-viewer:fullscreen {
+  background: var(--color-bg);
+  border: none;
+  border-radius: 0;
+}
+
 .transport-sep {
   width: 1px;
   height: 16px;

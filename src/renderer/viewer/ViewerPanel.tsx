@@ -12,6 +12,7 @@ import {
 import { registerShortcut } from '../shortcuts'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
+import { toggleViewerFullscreen } from './fullscreen'
 import { GridPlayer } from './GridPlayer'
 import { SequencePlayer } from './SequencePlayer'
 import { TimecodeInput } from './TimecodeInput'
@@ -404,10 +405,17 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
           setMarkOut(null)
         }
       }),
+      registerShortcut('viewer-fullscreen', {
+        combo: 'shift+f',
+        description: 'Fullscreen viewer',
+        when: focused,
+        handler: () => toggleViewerFullscreen()
+      }),
       registerShortcut('viewer-escape', {
         combo: 'escape',
         description: 'Return focus to browser',
-        when: focused,
+        // in fullscreen, Escape belongs to the native fullscreen exit
+        when: () => focused() && document.fullscreenElement === null,
         handler: () => {
           document.querySelector<HTMLElement>('[data-testid="browser-assets"]')?.focus()
         }
@@ -576,6 +584,14 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
           onClick={() => useTimelineStore.getState().setLoopPlayback(!loopPlayback)}
         >
           🔁
+        </button>
+        <button
+          type="button"
+          data-testid="viewer-fullscreen"
+          title="Fullscreen (Shift+F)"
+          onClick={() => toggleViewerFullscreen()}
+        >
+          ⛶
         </button>
       </div>
     </section>

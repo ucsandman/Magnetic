@@ -1,7 +1,7 @@
 # STATE — UX round 2 run
 
 **Status:** IN_PROGRESS
-**Current phase:** 4
+**Current phase:** 5
 **Baseline ref:** 422994f82ae70027e31b203c5580525ae0332b7a
 **Total phases:** 7
 
@@ -9,7 +9,7 @@
 - [x] 1 — Loop playback toggle (DONE: gates green, E2E 5/5, committed)
 - [x] 2 — Timecode click-to-type seeking (DONE: 364 unit, E2E 5/5, committed)
 - [x] 3 — Play marked range (/) (DONE: E2E 9/9 incl. relaunch specs; userData isolation fix; committed)
-- [ ] 4 — Audio meter
+- [x] 4 — Audio meter (DONE: 368 unit, E2E 7/7 twice, committed; E2E play-race de-raced)
 - [ ] 5 — Viewer fullscreen
 - [ ] 6 — Timeline minimap + follow-playhead
 - [ ] 7 — Polish & Harden
