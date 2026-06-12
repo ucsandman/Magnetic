@@ -319,6 +319,78 @@ test('timecode entry: click-to-type seeks, Escape cancels, garbage rejects visib
   await app.close()
 })
 
+test('play marked range: / plays in->out and pauses at out; loop wraps the range', async () => {
+  test.setTimeout(240_000)
+  const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-ux-range-'))
+  const app = await launchApp(join(tempRoot, 'UxRange.mglib'))
+  const page = await app.firstWindow()
+  await importFixtures(page, ['bars-1080p30.mp4']) // 10 s @ 30 fps
+
+  // open in the source viewer; / with no marks is a no-op
+  await page.getByTestId('asset-cell-bars-1080p30.mp4').dblclick()
+  await expect(page.getByTestId('viewer-video')).toBeVisible()
+  await page.keyboard.press('/')
+  await page.waitForTimeout(300)
+  expect(
+    await page.getByTestId('viewer-video').evaluate((el) => (el as HTMLVideoElement).paused)
+  ).toBe(true)
+
+  // mark 2 s -> 4 s via typed timecode + i/o
+  const input = page.getByTestId('timecode-input')
+  await page.getByTestId('viewer-timecode').click()
+  await input.fill('00:00:02:00')
+  await input.press('Enter')
+  await page.getByTestId('panel-viewer').click() // focus back from the input
+  await page.keyboard.press('i')
+  await page.getByTestId('viewer-timecode').click()
+  await input.fill('00:00:04:00')
+  await input.press('Enter')
+  await page.getByTestId('panel-viewer').click()
+  await page.keyboard.press('o')
+  await expect(page.getByTestId('viewer-io-range')).toBeVisible()
+
+  // the shortcut is discoverable in the overlay
+  await page.keyboard.press('Shift+?')
+  await expect(page.getByText('Play the marked range (in to out)')).toBeVisible()
+  await page.keyboard.press('Shift+?')
+
+  // / plays from in and pauses within a frame of out
+  await page.keyboard.press('/')
+  await expect
+    .poll(
+      () => page.getByTestId('viewer-video').evaluate((el) => (el as HTMLVideoElement).paused),
+      { timeout: 15_000 }
+    )
+    .toBe(true)
+  const parkedAt = await page
+    .getByTestId('viewer-video')
+    .evaluate((el) => (el as HTMLVideoElement).currentTime)
+  expect(Math.abs(parkedAt - 4)).toBeLessThanOrEqual(1 / 30 + 0.02)
+
+  // with loop on, / wraps out -> in and keeps playing
+  await page.keyboard.press('Control+l')
+  await page.keyboard.press('/')
+  let highWater = 0
+  await expect
+    .poll(
+      async () => {
+        const t = await page
+          .getByTestId('viewer-video')
+          .evaluate((el) => (el as HTMLVideoElement).currentTime)
+        const wrapped = t < highWater - 0.5
+        highWater = Math.max(highWater, t)
+        return wrapped
+      },
+      { timeout: 20_000 }
+    )
+    .toBe(true)
+  expect(
+    await page.getByTestId('viewer-video').evaluate((el) => (el as HTMLVideoElement).paused)
+  ).toBe(false)
+
+  await app.close()
+})
+
 test('layout: splitter drag resizes the browser, Reset Layout restores defaults, Shift+Z fits', async () => {
   test.setTimeout(240_000)
   const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-ux-layout-'))

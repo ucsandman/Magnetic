@@ -23,6 +23,12 @@ import {
 } from './app-state'
 import { getAutoTranscribe, setAutoTranscribe } from './project-io/library'
 
+// E2E launches must not share localStorage/caches with each other or with the
+// real profile — isolate userData next to the per-test library directory.
+if (process.env.MAGNETIC_TEST === '1' && process.env.MAGNETIC_LIBRARY_PATH !== undefined) {
+  app.setPath('userData', process.env.MAGNETIC_LIBRARY_PATH + '-userData')
+}
+
 registerMfileScheme()
 
 function createWindow(): void {

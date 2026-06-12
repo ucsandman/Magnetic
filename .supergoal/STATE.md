@@ -1,13 +1,13 @@
 # STATE — UX round 2 run
 
 **Status:** IN_PROGRESS
-**Current phase:** 2
+**Current phase:** 3
 **Baseline ref:** 422994f82ae70027e31b203c5580525ae0332b7a
 **Total phases:** 7
 
 ## Phases
 - [x] 1 — Loop playback toggle (DONE: gates green, E2E 5/5, committed)
-- [ ] 2 — Timecode click-to-type seeking
+- [x] 2 — Timecode click-to-type seeking (DONE: 364 unit, E2E 5/5, committed)
 - [ ] 3 — Play marked range (/)
 - [ ] 4 — Audio meter
 - [ ] 5 — Viewer fullscreen

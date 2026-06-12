@@ -100,6 +100,19 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
   const playStateRef = useRef<PlayState>('paused')
   const rateRef = useRef(1)
   const reverseRafRef = useRef<number | null>(null)
+  const markInRef = useRef<number | null>(null)
+  const markOutRef = useRef<number | null>(null)
+  const loopRef = useRef(loopPlayback)
+  /** True while a `/` range play is in flight (pause exactly at markOut). */
+  const rangePlayRef = useRef(false)
+
+  useEffect(() => {
+    markInRef.current = markIn
+    markOutRef.current = markOut
+  }, [markIn, markOut])
+  useEffect(() => {
+    loopRef.current = loopPlayback
+  }, [loopPlayback])
 
   // The placeholder section is replaced by this one when a clip opens, which
   // drops DOM focus — re-take it so JKL shortcuts work immediately.
@@ -138,6 +151,7 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
 
   const pause = useCallback((): void => {
     stopReverse()
+    rangePlayRef.current = false
     videoRef.current?.pause()
     rateRef.current = 1
     setState('paused')
@@ -216,6 +230,37 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
     return frameToFlicks(flicksToFrame(secondsToFlicks(video.currentTime), fps), fps)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fps stable per asset
   }, [])
+
+  // Marked-range boundary watch: while playing forward past markOut, a `/`
+  // range play pauses exactly at the out point; with loop on, any forward
+  // playback wraps back to markIn instead (the <video>.loop attribute is
+  // disabled while a range is set, so the native loop never fights this).
+  useEffect(() => {
+    let raf = 0
+    const step = (): void => {
+      const video = videoRef.current
+      const markInValue = markInRef.current
+      const markOutValue = markOutRef.current
+      if (
+        video !== null &&
+        markInValue !== null &&
+        markOutValue !== null &&
+        markOutValue > markInValue &&
+        playStateRef.current === 'forward' &&
+        secondsToFlicks(video.currentTime) >= markOutValue
+      ) {
+        if (loopRef.current) {
+          seekToFlicks(markInValue)
+        } else if (rangePlayRef.current) {
+          pause()
+          seekToFlicks(markOutValue)
+        }
+      }
+      raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [pause, seekToFlicks])
 
   // Autoplay (placeholder ▶ or Space with a browser selection): start as
   // soon as the media can play.
@@ -336,6 +381,19 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
         description: 'Mark out point',
         when: focused,
         handler: () => setMarkOut(currentFrameFlicks())
+      }),
+      registerShortcut('viewer-play-range', {
+        combo: '/',
+        description: 'Play the marked range (in to out)',
+        when: focused,
+        handler: () => {
+          const markInValue = markInRef.current
+          const markOutValue = markOutRef.current
+          if (markInValue === null || markOutValue === null || markOutValue <= markInValue) return
+          seekToFlicks(markInValue)
+          playForward(1)
+          rangePlayRef.current = true
+        }
       }),
       registerShortcut('viewer-clear-marks', {
         combo: 'x',
