@@ -78,11 +78,23 @@ class ClipPump {
   /** Begin decoding from `mediaFromSec` (pre-roll). */
   start(mediaFromSec: number): void {
     if (this.generator !== null) return
-    void this.session.then((handle) => {
-      if (this.done) return
-      this.generator = handle.decodeRange(mediaFromSec * FLICKS_PER_SECOND, Number.MAX_SAFE_INTEGER)
-      this.refill()
-    })
+    void this.session.then(
+      (handle) => {
+        if (this.done) return
+        this.generator = handle.decodeRange(
+          mediaFromSec * FLICKS_PER_SECOND,
+          Number.MAX_SAFE_INTEGER
+        )
+        this.refill()
+      },
+      (error: unknown) => {
+        // Dead session: mark the pump done so the window can retry with a
+        // fresh pump later (sessions evicts failed entries), and say so —
+        // a silent rejection here is an invisible black clip.
+        console.error(`clip pump: decoder session failed for clip ${this.item.clipId}:`, error)
+        this.done = true
+      }
+    )
   }
 
   private refill(): void {
@@ -101,7 +113,11 @@ class ClipPump {
           this.lookahead = null
         }
       },
-      () => {
+      (error: unknown) => {
+        // Mid-playback decode/fetch failure (file moved, server gone, bad
+        // data). The pump stops producing frames — log it so the freeze is
+        // diagnosable.
+        console.error(`clip pump: decode failed for clip ${this.item.clipId}:`, error)
         this.pulling = false
         this.done = true
       }
@@ -651,8 +667,12 @@ export class PlaybackEngine {
           return
         }
         frames.set(item.clipId, first.done === true ? null : first.value)
-      } catch {
-        frames.set(item.clipId, null) // decode failure: keep last texture
+      } catch (error) {
+        // Decode failure: keep last texture, but never silently — a black
+        // still with an empty console was the signature of the 10 GB demux
+        // bug, and this catch is where it hid.
+        console.error(`still decode failed for ${item.asset.fileName}:`, error)
+        frames.set(item.clipId, null)
       }
     }
     const layers = this.assembleLayers(items, frames, activeTransition, tSec)
