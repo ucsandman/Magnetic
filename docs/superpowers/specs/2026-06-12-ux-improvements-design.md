@@ -1,119 +1,183 @@
-# UX improvements: play affordances, layout, multi-clip preview — design
+# UX improvements round 2: loop, timecode entry, range play, meters, fullscreen, minimap — design
 
-Date: 2026-06-12
-Status: implementing (user requested autonomous research + implementation)
+Date: 2026-06-12 (round 2; supersedes the round-1 text of this doc)
+Status: approved (user requested autonomous improve → rebuild)
+
+## Round 1 (shipped in c264516)
+
+Visible transport on every viewer surface, Space rescue for dead states,
+resizable layout + Reset Layout, the 9-cell review grid, Shift+Z zoom-to-fit,
+Up/Down edit-point jumps, and focused-panel indication all shipped with unit +
+E2E coverage (`e2e/ux-controls.spec.ts`). This round builds on those surfaces.
 
 ## Problem
 
-Four user reports, all rooted in the app being keyboard-only where beginners
-expect visible controls:
+Round 1 made playback *visible*; it did not make playback *controllable* the
+way every surveyed NLE does. Round 1's own deferred list plus the 2026-06
+research backlog leave six concrete gaps:
 
-1. **"I can't hit play to watch the clip."** The sequence viewer
-   (`SequencePlayer.tsx`) renders only a canvas and a "playing/paused" label —
-   no transport controls at all. The source viewer placeholder ("No clip open —
-   double-click a clip") also has no play button, and pressing Space in that
-   state with an empty timeline does nothing.
-2. **No "back to start" button.** `Home` exists for the timeline only; the
-   source viewer has no go-to-start binding or button.
-3. **No layout reset.** The app shell is a fixed CSS grid (340px browser /
-   300px inspector / 280px timeline) — panels can't be resized, so there's
-   nothing to reset _and_ no way to adapt the layout to a task.
-4. **No way to watch several clips at once** (review a shoot quickly).
+1. **No loop playback.** Reviewing a cut or a trim point means re-pressing
+   Space forever. Every surveyed NLE ships a loop toggle (FCP ⌘L).
+2. **Timecode is display-only.** "Go to 1:02:30" requires scrubbing a 6-hour
+   timeline. The product's pitch is long-form; precise navigation is table
+   stakes (FCP/Premiere/Resolve all accept typed timecode).
+3. **Marks exist but nothing plays them.** I/O marks (`i`/`o`) drive edits,
+   but there is no "play the marked range" (FCP `/`), so checking a selection
+   before inserting means manual seek + watch + stop.
+4. **No audio metering.** `audio-graph.ts` already computes RMS
+   (`playbackEngine.audioRms()`, used only by the E2E harness) but no meter
+   renders — users can't see levels without exporting.
+5. **No fullscreen review.** The viewer is locked to its panel; there is no
+   distraction-free playback for client review of long-form content.
+6. **Timeline navigation doesn't scale to long-form.** The canvas pans via
+   `scrollXRef` (wheel only), there is no overview of where you are in a
+   6-hour sequence, and during playback the playhead walks off the right edge
+   and keeps going off-screen.
 
 ## Assumptions
 
-- "Reset layout" implies panels should be _resizable first_ (splitters),
-  with reset restoring the shipped defaults.
-- The multi-clip grid is a _review_ tool (which take is good?), not an
-  editing surface — muted by default, click to solo audio, double-click to
-  promote a cell to the real viewer.
-- Space behavior stays conservative: existing contextual rules unchanged;
-  the new "play the browser selection" path only triggers where Space was
-  previously dead (no clip open, empty sequence).
+- Loop restart may be implemented as stop + `play(0)` at sequence end — an
+  audible-gap-free engine-internal wrap is **not** required for v1.
+- The audio meter is mono (one bar) because `audioRms()` returns a single
+  power value; stereo split is out of scope.
+- Fullscreen uses the renderer-side Fullscreen API
+  (`element.requestFullscreen()`), no main-process window changes. It covers
+  source and sequence modes only — the grid already binds `Escape` to close,
+  which would collide with native fullscreen-exit.
+- The minimap renders inside the existing `TimelineCanvas` (same canvas, same
+  render pass) so `scrollXRef` stays component-local — no store plumbing, and
+  hit-testing follows the repo's state-derived-rect convention.
+- No overlap with the (approved, unbuilt) audio/transcript moat spec: that
+  round owns the browser/transcript surfaces; this round touches only
+  playback, viewer, and timeline surfaces.
 
 ## Design
 
-### 1. Transport everywhere (`viewer-transport` bar)
+### 1. Loop playback (`Ctrl+L` + transport button)
 
-- **Sequence viewer** gets the same transport bar as the source viewer:
-  go-to-start `|◀`, play/pause `▶/⏸`, go-to-end `▶|`, plus the sequence
-  timecode it already shows. Buttons drive a new shared
-  `src/renderer/playback/transport.ts` (`toggleSequencePlayback(seq, snap)`,
-  `seekSequence(flicks)`) used by both the TimelinePanel shortcuts and the
-  SequencePlayer buttons — one code path for Space and the button.
-- **Source viewer** transport gains go-to-start `|◀` (seek frame 0; keeps
-  playing if playing) and `Home`/`End` keyboard parity while the viewer is
-  focused.
-- **Placeholder viewer** (no clip open): shows a real ▶ button — enabled when
-  the browser has a selection; clicking opens the first selected asset and
-  autoplays (autoplay flows through `LibraryContext.openAsset(id, { autoplay })`).
-- **Space rescue:** in `togglePlayback`, if the sequence is empty and a
-  browser selection exists, open + autoplay the selection instead of doing
-  nothing (FCP's "Space plays the browser selection" behavior, scoped to the
-  previously-dead case).
+- New `loopPlayback: boolean` in the timeline store (`setLoopPlayback`),
+  default off, persisted to `localStorage["magnetic.playback.v1"]`. One flag
+  drives every surface.
+- **Transport button** `🔁` (pressed-state styling when on) added to both the
+  sequence and source transport bars; `Ctrl+L` registered once globally via
+  `registerShortcut` (auto-appears in the Shift+? overlay).
+- **Sequence:** when playback reaches sequence end with loop on, transport
+  restarts from 0 (engine `onEnded` → `play(0)`); with loop off, behavior is
+  unchanged (stop at end).
+- **Source viewer:** sets the `<video>` element's `loop` property; when a
+  marked range is set, loop wraps at `markOut` back to `markIn` (rAF check in
+  the existing timecode loop) instead of the media end.
+- **Grid cells** already loop; unaffected.
 
-### 2. Resizable layout + Reset Layout
+### 2. Timecode click-to-type seeking
 
-- Grid sizes become CSS variables on `.app-shell`:
-  `--browser-w` (default 340px, clamp 240–560), `--inspector-w` (default
-  300px, clamp 240–480), `--timeline-h` (default 280px, clamp 160–60vh).
-- Three 5px-wide splitter divs (browser/viewer, viewer/inspector,
-  middle/timeline) with pointer-capture drag; double-click a splitter resets
-  that one dimension.
-- Sizes persist to `localStorage["magnetic.layout.v1"]`; a **Reset Layout**
-  button in the topbar (next to Inspector) restores defaults and clears the
-  key. Defaults are identical to today's fixed sizes so existing E2E
-  geometry is unchanged.
-- `TimelineCanvas` already redraws via `ResizeObserver`, so live resize is
-  safe.
+- New pure helper in `src/shared/timecode.ts`:
+  `parseTimecode(text: string, fps: number): number | null` (flicks).
+  Accepts `HH:MM:SS:FF`, shorter colon forms (`MM:SS`, `SS:FF` per FCP
+  right-to-left field order: FF, SS, MM, HH), and bare digit runs parsed as
+  right-to-left pairs (`1234` → 12s 34f). Overflow normalizes (90f @30fps →
+  3s); invalid input returns null. Result clamps to `[0, duration]` at the
+  call site.
+- Both transport timecodes (`ViewerPanel`, `SequencePlayer`) become
+  click-to-edit: click swaps the text for a monospace `<input>` pre-filled
+  and selected; `Enter` parses + seeks (source: media seek; sequence:
+  `seekSequence`), `Escape` or blur cancels. Invalid input shakes/red-flashes
+  and stays open. Keyboard shortcuts are suppressed while the input is
+  focused (the registry's existing focus guard).
 
-### 3. Multi-clip preview grid ("Review Grid")
+### 3. Play marked range (`/`, source viewer)
 
-- Entry: browser toolbar button **Grid-preview (N)** appears when ≥2 assets
-  are selected; opens grid mode in the viewer panel (a third `viewerMode`
-  is _not_ added to the timeline store — grid is local viewer state in
-  `LibraryContext` (`gridAssetIds: string[] | null`) so sequence playback
-  state is untouched).
-- Layout: 2→1×2, 3–4→2×2, 5–6→2×3, 7–9→3×3; hard cap 9 cells (first 9 of
-  the selection; toolbar label says "first 9" when over).
-- Cells are `<video>` elements over the loopback media server
-  (`asset.mediaUrl`, or proxy via the same `needsProxy`/`ensureProxy` logic
-  as the source viewer), `loop` + `muted` + autoplay.
-- Audio: all muted; **click a cell to solo** its audio (click again to
-  mute); **double-click promotes** the cell to the normal source viewer.
-- Grid toolbar: play/pause-all, restart-all (back-to-start synergy), close
-  (`Escape` also closes, returning focus to the browser).
-- Missing/processing assets render a placeholder cell rather than breaking
-  the grid.
+- `/` (registered in `ViewerPanel`, active when both marks set): seek to
+  `markIn`, play, pause exactly at `markOut` (rAF boundary check, same loop
+  as feature 1's range-wrap; loop on = wrap instead of pause).
+- Transport gains no new button — this is keyboard-only, listed in the
+  overlay, matching FCP.
 
-### 4. Research-driven quick wins (from the NLE survey)
+### 4. Audio meter (sequence transport)
 
-Implemented (small, high leverage):
+- New pure scale helper `src/renderer/viewer/meter-scale.ts`:
+  `rmsToMeter(rms: number): { fraction: number; zone: 'green'|'yellow'|'red' }`
+  mapping RMS → dBFS (`20·log10`, floor −60 dB) → bar fraction; zone breaks
+  at −12 dB and −6 dB.
+- New `src/renderer/viewer/AudioMeter.tsx`: a slim horizontal bar in the
+  sequence transport bar, rAF-driven from `playbackEngine.audioRms()` while
+  `sequence-playing`, instant attack / ~300 ms release decay, idle at zero.
+  `data-testid="sequence-meter"`, exposes `aria-valuenow` (dB) for tests.
 
-- **Shift+Z — zoom timeline to fit** (FCP convention): computes
-  `pxPerSec = timelineWidth / durationSec`, clamped to [4, 1000].
-- **Up/Down — jump to previous/next edit point** (FCP convention): spine
-  boundaries incl. 0 and sequence end.
-- **Focused-panel indication**: `:focus-within` accent hairline on the
-  panel headers, so the contextual Space/JKL rules become visible instead
-  of mysterious.
-- **L/Space dead-state fixes** above are themselves the top finding: every
-  surveyed NLE (FCP, Premiere, Resolve, CapCut) keeps a visible transport
-  under the monitor at all times.
+### 5. Viewer fullscreen (`Shift+F` + `⛶` button)
 
-Deferred (bigger than this pass): loop-playback toggle wired into the
-engine, timecode click-to-type seeking, browser filmstrip audio scrubbing,
-dual viewers.
+- `⛶` button on both transports + `Shift+F`: calls
+  `requestFullscreen()` on the viewer panel container; native `Escape`
+  exits. `:fullscreen` CSS keeps the transport bar visible (auto-hide is out
+  of scope).
+- Disabled in grid mode (Escape collision, see Assumptions).
+
+### 6. Timeline minimap + follow-playhead
+
+- **Minimap:** an 18 px strip across the top of `TimelineCanvas`, drawn in
+  `render.ts` as part of the normal render pass, shown only when the
+  sequence's content width exceeds the visible canvas width. Draws the whole
+  sequence scaled to canvas width: spine clips as blocks, connected clips as
+  a thin upper row, the playhead tick, and the current viewport as a
+  bordered rectangle (derived from `scrollX`, `zoomPxPerSec`, canvas width).
+- **Interaction:** pointer-down/drag inside the strip centers the viewport
+  on that time (updates `scrollXRef` + redraw); it is a state-derived hit
+  rect in `TimelineCanvas`'s existing pointer handlers (no DOM overlay).
+- **Follow-playhead paging:** during sequence playback only, when the
+  playhead's x crosses the right edge of the viewport, page `scrollX`
+  forward so the playhead lands near the left edge (FCP-style paging, no
+  smooth scroll; manual pans are never fought while paused).
+- `scrollX` is already exposed through the `__magneticTimeline` test-state
+  hook for E2E assertions.
+
+## Docs
+
+- README feature list: loop, typed timecode, range play, meters, fullscreen,
+  minimap. Regenerate the shortcut table (`scripts/dump-shortcuts.mjs`).
+- `docs/GUIDE.md`: update the playback/review workflow section.
+
+## Error handling
+
+- `parseTimecode` returns null on garbage; the input rejects visibly and
+  never seeks.
+- Fullscreen promise rejection (platform denial) is caught and ignored — the
+  button is a no-op rather than a crash.
+- Meter reads `audioRms()` only while the engine reports playing; engine
+  absence/idle renders a zero bar.
+- Loop with an empty sequence keeps round 1's Space-rescue semantics
+  (nothing to loop, no change).
 
 ## Testing
 
-- Unit (vitest): transport helper logic (toggle from end restarts at 0;
-  empty-sequence guard), grid layout math (N→rows×cols), layout clamp math.
-- E2E (Playwright, patterns from `e2e/viewer.spec.ts`):
-  - sequence transport: button play/pause toggles `sequence-playing`,
-    go-to-start zeroes the playhead timecode
-  - placeholder play button opens + plays the selected browser clip
-  - resize browser splitter → width changes; Reset Layout restores 340px
-  - grid: select 2 clips → grid button → 2 cells render and play; click
-    solos audio; double-click opens the clip in the source viewer
-  - Shift+Z fits a long sequence; Up/Down land on edit-point timecodes
+- **Unit (vitest):** `parseTimecode` (all accepted forms, overflow
+  normalization, garbage → null); `rmsToMeter` (floor, zone boundaries);
+  loop-wrap decision logic in `transport.ts` (end + loop → restart, end +
+  no-loop → stop); minimap viewport-rect math (pure helper, content narrower
+  than canvas → hidden).
+- **E2E (Playwright, extend `e2e/ux-controls.spec.ts`):**
+  - loop: enable via button, play near sequence end, assert
+    `sequence-playing` stays true after crossing the end and the playhead
+    wrapped below its pre-wrap value
+  - timecode: click sequence timecode, type `00:00:02:00`, Enter → playhead
+    timecode reads it back; garbage input leaves playhead unmoved
+  - range play: set i/o in source viewer, press `/`, assert playback pauses
+    within a frame of `markOut`
+  - meter: play the tone fixture, assert `sequence-meter` reports a non-zero
+    `aria-valuenow`, then zero after pause + decay
+  - fullscreen: click `⛶`, poll `document.fullscreenElement` set, Escape
+    clears it (if the harness denies fullscreen, assert the documented
+    no-op: no crash, button remains)
+  - minimap: long sequence (zoomed in past one screen) → minimap visible;
+    drag in the strip changes `scrollX` in the test-state hook; play across
+    the right edge → `scrollX` pages forward
+- **Gates:** `npm run typecheck`, `lint`, `test`, `build`, `test:e2e` green.
+
+## Out of scope (this round)
+
+- Dual viewers (event viewer + sequence viewer side by side).
+- Filmstrip audio skimming / FCP-style skimming (browser surface belongs to
+  the transcript-moat round; full skimming is its own engine-heavy round).
+- Chapters/show-notes export (transcript surface, moat round).
+- Retiming (per backlog: build it alone).
+- Stereo meters, peak-hold, loudness (LUFS); transport auto-hide in
+  fullscreen; smooth-scroll following.
