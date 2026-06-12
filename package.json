@@ -1,9 +1,10 @@
 {
   "name": "magnetic",
   "version": "0.1.0",
-  "description": "Magnetic — a Final Cut Pro-style non-linear video editor for Windows",
+  "description": "Magnetic — a free, open-source Final Cut Pro-style non-linear video editor for Windows",
   "main": "./out/main/index.js",
   "author": "Practical Systems",
+  "license": "MIT",
   "homepage": "https://github.com/ucsandman/magnetic",
   "scripts": {
     "format": "prettier --write .",
