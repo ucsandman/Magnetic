@@ -81,6 +81,7 @@ type PlayState = 'paused' | 'forward' | 'reverse'
 
 function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
   const { setMarkedRange, skimTarget, autoplayAssetId, clearAutoplay } = useLibrary()
+  const loopPlayback = useTimelineStore((state) => state.loopPlayback)
   const fps = asset.video?.fps ?? FALLBACK_FPS
   const durationFlicks = asset.durationFlicks
   const sectionRef = useRef<HTMLElement>(null)
@@ -403,6 +404,7 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
           ref={videoRef}
           data-testid="viewer-video"
           src={sourceUrl}
+          loop={loopPlayback && (markIn === null || markOut === null)}
           onPause={() => {
             // Keep the transport UI in sync when the element pauses on its own
             // (end of media, fatal error). Reverse mode pauses intentionally.
@@ -501,6 +503,16 @@ function ViewerContent({ asset }: { asset: AssetView }): ReactNode {
           }}
         >
           Clear
+        </button>
+        <span className="transport-sep" />
+        <button
+          type="button"
+          data-testid="loop-toggle"
+          title="Loop playback (Ctrl+L)"
+          aria-pressed={loopPlayback}
+          onClick={() => useTimelineStore.getState().setLoopPlayback(!loopPlayback)}
+        >
+          🔁
         </button>
       </div>
     </section>

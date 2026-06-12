@@ -16,6 +16,7 @@ export function SequencePlayer(): ReactNode {
   const sequence = useTimelineStore((state) => state.sequence)
   const playheadFlicks = useTimelineStore((state) => state.playheadFlicks)
   const isPlaying = useTimelineStore((state) => state.isSequencePlaying)
+  const loopPlayback = useTimelineStore((state) => state.loopPlayback)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const snapshotRef = useRef(snapshot)
   useEffect(() => {
@@ -124,6 +125,16 @@ export function SequencePlayer(): ReactNode {
           onClick={() => goToSequenceEnd(sequence)}
         >
           ⇥
+        </button>
+        <span className="transport-sep" />
+        <button
+          type="button"
+          data-testid="loop-toggle"
+          title="Loop playback (Ctrl+L)"
+          aria-pressed={loopPlayback}
+          onClick={() => useTimelineStore.getState().setLoopPlayback(!loopPlayback)}
+        >
+          🔁
         </button>
       </div>
     </section>

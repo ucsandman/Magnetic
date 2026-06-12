@@ -22,6 +22,7 @@ import { projectTranscript } from '../transcript/projection'
 import { renderTitle } from '../titles/render'
 import { AudioGraphController } from './audio-graph'
 import { Compositor, SEQUENCE_H, SEQUENCE_W, type CompositedLayer } from './compositor/compositor'
+import { sequenceEndAction } from './loop'
 import type { DecoderHandle } from './decoder/sample-decoder'
 import { sessionFor } from './sessions'
 
@@ -217,8 +218,15 @@ export class PlaybackEngine {
   private drift: DriftSample[] = []
   private nextDriftSampleAt = 0
   private stillToken = 0
+  private loop = false
+  private lastSnapshot: LibrarySnapshot | null = null
   onTime: ((flicks: number) => void) | null = null
   onPlayState: ((playing: boolean) => void) | null = null
+
+  /** Loop-playback view setting; consulted when the clock reaches the end. */
+  setLoop(loop: boolean): void {
+    this.loop = loop
+  }
 
   attach(canvas: HTMLCanvasElement): void {
     this.compositor?.dispose()
@@ -425,6 +433,7 @@ export class PlaybackEngine {
     if (audio.ctx.state === 'suspended') await audio.ctx.resume()
     await this.prepareCaptions(sequence, snapshot)
     this.sequence = sequence
+    this.lastSnapshot = snapshot
     this.items = this.buildItems(sequence, snapshot)
     this.fromSec = fromFlicks / FLICKS_PER_SECOND
     this.endSec = sequenceDuration(sequence) / FLICKS_PER_SECOND
@@ -447,6 +456,16 @@ export class PlaybackEngine {
     }
     const tSec = this.fromSec + (this.audio.ctx.currentTime - this.startCtxTime)
     if (tSec >= this.endSec) {
+      if (
+        sequenceEndAction(this.loop) === 'wrap' &&
+        this.sequence !== null &&
+        this.lastSnapshot !== null
+      ) {
+        // stop + play(0) wrap — an audibly gapless engine-internal wrap is
+        // explicitly not required (spec assumption).
+        void this.play(this.sequence, this.lastSnapshot, 0)
+        return
+      }
       this.onTime?.(Math.round(this.endSec * FLICKS_PER_SECOND))
       this.pause()
       return

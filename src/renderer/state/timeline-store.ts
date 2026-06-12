@@ -60,6 +60,7 @@ import {
 } from '../../shared/timeline/select'
 import { UndoStack, type Op } from '../../shared/timeline/undo'
 import { playbackEngine } from '../playback/engine'
+import { loadLoopPref, saveLoopPref } from '../playback/loop'
 import { measureDraws } from '../timeline/perf'
 
 /**
@@ -102,6 +103,9 @@ interface TimelineStore {
   setViewerMode(mode: 'source' | 'sequence'): void
   isSequencePlaying: boolean
   setSequencePlaying(playing: boolean): void
+  /** Loop-playback view setting (Ctrl+L); persisted, not undoable. */
+  loopPlayback: boolean
+  setLoopPlayback(loop: boolean): void
   setFx(clipId: string, fx: ClipFx): void
   setTitle(clipId: string, titleData: TitleData): void
   /** Sequence-level burned-in caption settings (undoable). */
@@ -288,6 +292,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
     tool: 'select',
     viewerMode: 'source',
     isSequencePlaying: false,
+    loopPlayback: loadLoopPref(),
 
     setTool(tool) {
       set({ tool })
@@ -299,6 +304,12 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 
     setSequencePlaying(isSequencePlaying) {
       set({ isSequencePlaying })
+    },
+
+    setLoopPlayback(loopPlayback) {
+      set({ loopPlayback })
+      playbackEngine.setLoop(loopPlayback)
+      saveLoopPref(loopPlayback)
     },
 
     setFx(clipId, fx) {
@@ -606,6 +617,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 // The engine reflects playback into the store regardless of which view is mounted.
 playbackEngine.onTime = (flicks) => useTimelineStore.getState().setPlayhead(flicks)
 playbackEngine.onPlayState = (playing) => useTimelineStore.getState().setSequencePlaying(playing)
+playbackEngine.setLoop(useTimelineStore.getState().loopPlayback)
 
 /** Deterministic PRNG (mulberry32) so the undo-storm E2E is reproducible. */
 function mulberry32(seed: number): () => number {

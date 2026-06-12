@@ -1,53 +1,53 @@
 SUPERGOAL_PHASE_START
-Phase: 5 of 11 — Timeline UI & basic edits
-Task: Canvas magnetic timeline with E/W/Q/D edits, ripple delete, snapping/zoom/skim, persistence
-Type: greenfield, ui
-Mandatory commands: npm run typecheck, npm run lint, npm test, npm run build, npm run test:e2e
-Acceptance criteria: 9
-Evidence required: command outputs, E/W/Q/D E2E proof, perf numbers, screenshot
-Depends on phases: 2, 4
-
-## Why
-
-This is where the kernel becomes the visible magnetic timeline — the single most recognizable surface of the replica.
+Phase: 5 of 7 — Viewer fullscreen
+Task: Add a fullscreen button + Shift+F that fullscreens the viewer panel via the Fullscreen API, transport visible.
+Mandatory commands: npm run typecheck; npm run lint; npm run test; npm run build; npx playwright test e2e/ux-controls.spec.ts
+Acceptance criteria: 6
+Evidence required: E2E output for enter/exit fullscreen (or the documented no-op path if the harness denies it); grep showing the rejection catch
+Depends on phases: none
 
 ## Work
 
-- `src/renderer/state/`: Zustand store holding `{ project, sequence, selection, undoStack, playheadFlicks, zoomPxPerSec, snapping }`. All mutations go through kernel ops; store subscribes and persists sequence into project JSON (debounced via project-io IPC). Expose a `window.__magneticState` read-only snapshot under MAGNETIC_TEST for E2E deep-equal asserts.
-- `src/renderer/timeline/`: Canvas 2D renderer on devicePixelRatio-aware canvas. Layers (painted in order): ruler (timecode ticks adaptive to zoom), audio lanes (below spine), spine row (taller), connected video lanes (above), clip bodies with rounded rects + name + filmstrip slice (from P2 strips) + waveform polyline (from peaks JSON), gap clips (dark hatch), selection highlights, snapping guides, skimmer line, playhead. Virtualize: only draw clips intersecting viewport.
-- Interactions this phase: click select, shift-click range, drag from browser into timeline (append at drop or connect on upper lane drop), rubber-band optional (skip if time-tight — not in criteria). Keyboard: E append, W insert at playhead, Q connect at playhead, D overwrite at playhead (source = browser selection; use I/O range from viewer if set, else whole clip), Del ripple delete, Shift+Del lift, N snapping toggle, +/- and Ctrl+wheel zoom, S skimming toggle. Timeline skim: hover updates skimmer + viewer shows frame (static seek via existing viewer; full engine is P7).
-- Playhead: click ruler to move; Home/End; renders across all lanes.
-- Snapping: drag/trim operations snap to clip edges, playhead, markers when enabled (visual guide line) — implement snap-point provider in kernel-adjacent util with unit tests.
-- Perf harness: `MAGNETIC_TEST` hook builds a 100-clip sequence programmatically; render loop instrumented (performance.now around draw), E2E pulls median frame time and prints it.
-- `e2e/timeline.spec.ts` covering the criteria below.
+Spec section: "5. Viewer fullscreen (Shift+F + ⛶ button)".
 
-## Acceptance criteria (all must pass — verify each in transcript)
+- ⛶ button (`data-testid="viewer-fullscreen"`) on the source and sequence
+  transports; `shift+f` registered once (description for the overlay).
+  Both call `requestFullscreen()` on the viewer panel container element;
+  the returned promise's rejection is caught and ignored (documented no-op).
+  If already fullscreen, the button/shortcut exits (`document.exitFullscreen()`).
+- `:fullscreen` CSS on the viewer container: video/canvas fills the screen,
+  transport bar remains visible at the bottom (no auto-hide).
+- NOT rendered in grid mode (GridPlayer binds Escape to close-grid, which
+  collides with native fullscreen-exit; spec assumption).
+- E2E (ux-controls.spec.ts): click ⛶, poll `document.fullscreenElement` set
+  to the container; press Escape, poll it cleared; transport bar visible
+  while fullscreen. If the harness denies fullscreen (promise rejects),
+  assert the documented no-op instead: no crash, no console error, button
+  still present — and print which path ran.
 
-- E2E builds a 3-clip spine via E/W/Q/D and asserts kernel state matches expected order/durations
-- Ripple delete closes the gap (E2E asserts total duration shrinks by exactly the clip length); lift leaves a gap clip
-- Connected clip (Q) renders on a lane above the spine and moves with its parent (E2E drag assert)
-- Snapping on/off (N) changes drag behavior at clip edges (E2E)
-- Zoom changes px-per-second; clips re-render with filmstrips + waveforms (screenshot diff non-identical)
-- Relaunch restores the sequence exactly (E2E deep-equal via exposed state)
-- Timeline with 100 clips renders at <33 ms median frame time (perf harness logs numbers to transcript)
-- All mandatory commands exit 0
-- Screenshot `.supergoal/evidence/phase-5/timeline.png`
+## Acceptance criteria
 
-## Mandatory commands (run each, surface last ~10 lines + exit code)
+1. `viewer-fullscreen` button renders on both source and sequence transports, and NOT in grid mode (E2E).
+2. `shift+f` is registered and listed in the overlay (E2E or grep).
+3. Activating fullscreen sets `document.fullscreenElement` to the viewer container (E2E; or the documented denial no-op path asserted and labeled).
+4. Escape exits fullscreen (E2E, same conditional).
+5. The transport bar is visible while fullscreen (E2E, same conditional).
+6. requestFullscreen rejection is caught (grep shows .catch on the call path); all 5 mandatory commands exit 0.
 
-- `npm run typecheck`
-- `npm run lint`
-- `npm test`
-- `npm run build`
-- `npm run test:e2e`
+## Cleanliness
 
-## Evidence required in transcript
+No console.log/debugger in added lines; no new lint warnings.
 
-- Command outputs; E/W/Q/D E2E proof; perf median number; `.supergoal/evidence/phase-5/timeline.png`
+[Agent prints SUPERGOAL_PHASE_VERIFY and SUPERGOAL_PHASE_DONE here during execution]
 
-## Notes
+## Mandatory commands
 
-- Canvas hit-testing: maintain a parallel array of clip rects from the last draw; do not read pixels.
-- Filmstrip slices: drawImage from the strip with source-rect math; cache HTMLImageElements per asset.
-- Draw only on state change + rAF coalescing, not a free-running loop — perf criterion is about draw cost, idle should be 0 draws.
-- FCP look targets: spine clips ~48 px tall, connected ~32 px, 4 px lane gutters, selection = amber outline, skimmer = thin red, playhead = white with triangle handle.
+- npm run typecheck
+- npm run lint
+- npm run test
+- npm run build
+- npx playwright test e2e/ux-controls.spec.ts
+
+## Evidence required
+
+- E2E output for enter/exit fullscreen (or the documented no-op path if the harness denies it); grep showing the rejection catch

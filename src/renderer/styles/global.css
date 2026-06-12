@@ -710,6 +710,12 @@ select,
   min-width: 30px;
 }
 
+.viewer-transport button[aria-pressed='true'] {
+  background: var(--color-accent-fill);
+  border-color: var(--color-accent-fill);
+  color: #fff;
+}
+
 .transport-sep {
   width: 1px;
   height: 16px;

@@ -1,57 +1,63 @@
 SUPERGOAL_PHASE_START
-Phase: 1 of 11 — Scaffold shell & binaries
-Task: Bootable dark 3-panel Electron app with toolchain, native binaries fetched & spawn-verified, generated test fixtures
-Type: greenfield, ui
-Mandatory commands: npm run typecheck, npm run lint, npm test, npm run build, npm run test:e2e
+Phase: 1 of 7 — Loop playback toggle
+Task: Add a persisted loop-playback flag driving sequence end-wrap, source viewer looping, transport buttons on both viewers, and Ctrl+L.
+Mandatory commands: npm run typecheck; npm run lint; npm run test; npm run build; npx playwright test e2e/ux-controls.spec.ts e2e/playback.spec.ts
 Acceptance criteria: 8
-Evidence required: command outputs, fetch-binaries idempotency demo, shell screenshot
+Evidence required: unit test output for wrap decision; E2E output for loop wrap + button toggle; grep showing ctrl+l registration
 Depends on phases: none
-
-## Why
-
-Everything depends on a bootable, verifiable app shell with the toolchain and native binaries proven on day one.
 
 ## Work
 
-- Scaffold with `npm create @quick-start/electron` (electron-vite, React + TS template) or equivalent current scaffold — verify the current recommended electron-vite setup via Context7 before committing to it. TypeScript `strict: true`. App/product name "Magnetic", package name `magnetic`.
-- Add ESLint (typescript-eslint) + Prettier; Vitest for unit tests; Playwright with `_electron` for E2E. Scripts: `dev`, `build` (electron-vite build), `typecheck` (tsc --noEmit across main/preload/renderer), `lint`, `test` (vitest run), `test:e2e` (playwright test), `fetch-binaries`, `fixtures`.
-- `src/main/index.ts`: BrowserWindow (dark titlebar, min 1280×800), minimal File/Edit/Window/Help menu. `src/preload/index.ts`: contextBridge-exposed, typed IPC API (single `api` object; add zod validation scaffolding now — every handler validates input).
-- `src/renderer/`: React shell with FCP-style dark theme tokens (near-black panels ~#1d1d1f/#28282b, #0a84ff accent, 11–13px UI type) and 3-panel layout: browser (left), viewer (top-right), timeline strip (bottom, full width), inspector (right, toggleable via Cmd/Ctrl+4-style toggle button). Use CSS grid; panels are placeholder content with correct chrome (headers, toolbars) this phase.
-- `scripts/fetch-binaries.mjs`: download + sha256-verify into `resources/bin/` — ffmpeg + ffprobe (gyan.dev release-essentials zip; pin exact URL + hashes after checking availability), whisper.cpp Windows x64 prebuilt (pin a release; if no usable prebuilt exists, document and build via cmake as fallback), ggml `base.en` model from HF. Idempotent: skips files whose hash already matches. Print clear progress.
-- Diag IPC channel `diag:binaries`: main spawns `ffprobe -version` and whisper `--help`, returns exit codes + first stdout line. Render result in a hidden-by-default debug panel; E2E asserts both exit 0.
-- `scripts/make-fixtures.mjs` → `fixtures/` (gitignored): (a) `bars-1080p30.mp4` 10 s testsrc2+sine h264/aac, (b) `red-720p25.mp4` 8 s solid-color, (c) `tone.wav` 5 s audio-only, (d) `speech.wav` — Windows SAPI TTS (PowerShell System.Speech) reading a fixed ~80-word script stored in the repo as `fixtures-script.txt`. ffprobe-verify each and print durations.
-- `e2e/smoke.spec.ts`: app boots, title "Magnetic", three panels visible (data-testid), contextIsolation probe (`window.require` undefined, `window.api` defined), diag IPC exit codes 0, screenshot to `.supergoal/evidence/phase-1/shell.png`.
-- Git: repo already initialized at dispatch; commit the scaffold. `README.md` with install/dev/build/fetch-binaries/fixtures steps. `.gitignore`: node_modules, dist, out, resources/bin, fixtures, playwright-report, test-results.
+Spec section: "1. Loop playback" in docs/superpowers/specs/2026-06-12-ux-improvements-design.md.
 
-## Acceptance criteria (all must pass — verify each in transcript)
+- Add `loopPlayback: boolean` (default false) + `setLoopPlayback(on)` to the
+  timeline store (src/renderer/timeline/timeline-store.ts). Persist to
+  localStorage["magnetic.playback.v1"] as JSON `{loop}`; rehydrate at store
+  creation. Do NOT put it in undoable document state — it is a view setting.
+- transport.ts: make sequence end behavior loop-aware. Implement the decision
+  as a pure exported function (e.g. `endOfSequenceAction(loop): 'wrap'|'stop'`
+  or equivalent) so it unit-tests without the engine; wire the engine's
+  end-of-playback path (engine stop at endSec → if loop on, play(0)).
+  Stop+play(0) is acceptable per spec.
+- Loop button on BOTH transports (SequencePlayer.tsx and ViewerPanel.tsx
+  source transport): `data-testid="loop-toggle"`, `aria-pressed` mirrors the
+  flag, pressed-state styling consistent with the existing transport buttons.
+- Register `ctrl+l` ONCE globally (App.tsx, like ctrl+e) via registerShortcut
+  with a description; it must appear in the Shift+? overlay automatically.
+- Source viewer: the `<video>` element's `loop` property mirrors the flag
+  while no marked range is set (range-wrap arrives in phase 3).
+- Unit tests for the wrap decision + persistence round-trip (vitest, colocated
+  test file).
+- E2E (extend e2e/ux-controls.spec.ts): enable loop via the button, play near
+  the sequence end, assert `sequence-playing` remains true after crossing the
+  end AND the playhead value wrapped below its pre-wrap value; toggle via
+  Ctrl+L reflected in aria-pressed.
 
-- `npm run dev` boots a window; E2E asserts title "Magnetic" and all three panels visible
-- `scripts/fetch-binaries.mjs` downloads and sha256-verifies ffmpeg, ffprobe, whisper binary + model; second run is a no-op (idempotent), proven in transcript
-- Diag IPC spawns `ffprobe -version` and whisper `--help` from main; E2E asserts both return exit 0
-- `scripts/make-fixtures.mjs` produces ≥4 fixture files; ffprobe-verified durations printed
-- Renderer runs with contextIsolation on, nodeIntegration off (asserted in E2E via feature probe)
-- typecheck, lint, test, build, test:e2e all exit 0
-- Screenshot `.supergoal/evidence/phase-1/shell.png` saved showing dark 3-panel layout
-- Git repo committed; README documents install/dev/build/fetch steps
+## Acceptance criteria
 
-## Mandatory commands (run each, surface last ~10 lines + exit code)
+1. Timeline store exposes `loopPlayback` (default false) and `setLoopPlayback`; toggling persists to localStorage["magnetic.playback.v1"] and rehydrates on reload (test or E2E evidence).
+2. `ctrl+l` is registered through registerShortcut and listed by listShortcuts() (grep + overlay row visible in E2E).
+3. Both transports render the loop button with `data-testid="loop-toggle"` and `aria-pressed` reflecting the flag; clicking toggles it.
+4. Sequence playback with loop ON: crossing sequence end keeps `sequence-playing` true and the playhead wraps (E2E).
+5. Sequence playback with loop OFF: stops at end exactly as before (existing playback E2E stays green).
+6. Source viewer `<video>.loop` mirrors the flag (E2E via evaluate or unit).
+7. New unit tests pass; no existing unit test broken (`npm run test` green).
+8. `npm run typecheck`, `lint`, `build`, and the targeted Playwright run all exit 0.
 
-- `npm run typecheck`
-- `npm run lint`
-- `npm test`
-- `npm run build`
-- `npm run test:e2e`
+## Cleanliness
 
-## Evidence required in transcript
+No console.log/debugger in added lines; no new lint warnings.
 
-- All command outputs (last ~10 lines + exit codes)
-- fetch-binaries run twice: first downloads, second prints skip messages
-- `.supergoal/evidence/phase-1/shell.png`
+[Agent prints SUPERGOAL_PHASE_VERIFY and SUPERGOAL_PHASE_DONE here during execution]
 
-## Notes
+## Mandatory commands
 
-- Verify current Electron/electron-vite/Playwright-electron APIs via Context7 before scaffolding — do not trust memorized majors.
-- Playwright must launch the *built* app (electron-vite preview or out/ dir) or dev build consistently; pick one and keep it stable for all later phases.
-- If a pinned binary URL 404s, choose the nearest stable release, update the pin + hash, and note it in STATE.md notable events. Do not leave hashes unverified.
-- E2E on E:\-less Windows runners: paths with spaces are common — quote every spawn arg now.
-- Keep at least one trivial vitest unit test so `npm test` is meaningful from day one (e.g., theme token export).
+- npm run typecheck
+- npm run lint
+- npm run test
+- npm run build
+- npx playwright test e2e/ux-controls.spec.ts e2e/playback.spec.ts
+
+## Evidence required
+
+- unit test output for wrap decision; E2E output for loop wrap + button toggle; grep showing ctrl+l registration

@@ -12,6 +12,7 @@ import type { Sequence } from '../src/shared/timeline/model'
 
 const ROOT = join(__dirname, '..')
 const FIXTURES = join(ROOT, 'fixtures')
+const FLICKS_PER_SECOND = 705_600_000
 
 interface TimelineTestState {
   sequence: Sequence | null
@@ -170,6 +171,83 @@ test('review grid: watch two clips at once, solo audio, promote to viewer', asyn
   await redCell.dblclick()
   await expect(page.getByTestId('viewer-video')).toBeVisible()
   await expect(page.getByTestId('viewer-duration')).toHaveText('00:00:08:00')
+
+  await app.close()
+})
+
+test('loop playback: Ctrl+L toggles, sequence wraps at the end and keeps playing', async () => {
+  test.setTimeout(240_000)
+  const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-ux-loop-'))
+  const app = await launchApp(join(tempRoot, 'UxLoop.mglib'))
+  const page = await app.firstWindow()
+  await importFixtures(page, ['red-720p25.mp4']) // 8 s fixture
+
+  // one-clip sequence, viewer in sequence mode, paused
+  await page.getByTestId('asset-cell-red-720p25.mp4').click()
+  await page.keyboard.press('e')
+  await page.keyboard.press(' ')
+  await expect(page.getByTestId('viewer-mode')).toHaveText('sequence')
+  await page.getByTestId('sequence-play-pause').click()
+  await expect(page.getByTestId('sequence-playing')).toHaveText('paused')
+
+  // loop button toggles + persists
+  const loopButton = page.getByTestId('loop-toggle')
+  await expect(loopButton).toHaveAttribute('aria-pressed', 'false')
+  await loopButton.click()
+  await expect(loopButton).toHaveAttribute('aria-pressed', 'true')
+  expect(await page.evaluate(() => localStorage.getItem('magnetic.playback.v1'))).toBe(
+    '{"loop":true}'
+  )
+
+  // park near the end, play: crossing the end wraps and keeps playing
+  await page.evaluate(
+    (flicks) =>
+      (
+        window as unknown as {
+          __magneticTimeline: { playback: { seek(flicks: number): void } }
+        }
+      ).__magneticTimeline.playback.seek(flicks),
+    6.5 * FLICKS_PER_SECOND
+  )
+  await page.getByTestId('sequence-play-pause').click()
+  await expect(page.getByTestId('sequence-playing')).toHaveText('playing')
+  await expect
+    .poll(async () => (await getState(page)).playheadFlicks, { timeout: 30_000 })
+    .toBeLessThan(4 * FLICKS_PER_SECOND) // wrapped back below 4 s
+  await expect(page.getByTestId('sequence-playing')).toHaveText('playing')
+
+  // Ctrl+L turns loop off; reaching the end now stops at the end
+  await page.getByTestId('sequence-play-pause').click()
+  await page.keyboard.press('Control+l')
+  await expect(loopButton).toHaveAttribute('aria-pressed', 'false')
+  await page.evaluate(
+    (flicks) =>
+      (
+        window as unknown as {
+          __magneticTimeline: { playback: { seek(flicks: number): void } }
+        }
+      ).__magneticTimeline.playback.seek(flicks),
+    6.5 * FLICKS_PER_SECOND
+  )
+  await page.getByTestId('sequence-play-pause').click()
+  await expect(page.getByTestId('sequence-playing')).toHaveText('playing')
+  await expect
+    .poll(() => page.getByTestId('sequence-playing').innerText(), { timeout: 30_000 })
+    .toBe('paused')
+  expect((await getState(page)).playheadFlicks).toBeGreaterThan(7.5 * FLICKS_PER_SECOND)
+
+  // the source viewer's transport has the same toggle, and <video> mirrors it
+  await page.getByTestId('asset-cell-red-720p25.mp4').dblclick()
+  await expect(page.getByTestId('viewer-video')).toBeVisible()
+  await expect(loopButton).toHaveAttribute('aria-pressed', 'false')
+  await loopButton.click()
+  expect(
+    await page.getByTestId('viewer-video').evaluate((el) => (el as HTMLVideoElement).loop)
+  ).toBe(true)
+  await loopButton.click()
+  expect(
+    await page.getByTestId('viewer-video').evaluate((el) => (el as HTMLVideoElement).loop)
+  ).toBe(false)
 
   await app.close()
 })

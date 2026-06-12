@@ -1,52 +1,65 @@
 SUPERGOAL_PHASE_START
-Phase: 2 of 11 — Library, import & browser
-Task: Library/Event/Project persistence, media import with metadata + filmstrips + waveforms, FCP-style browser with skim/rate/search
-Type: greenfield, ui
-Mandatory commands: npm run typecheck, npm run lint, npm test, npm run build, npm run test:e2e
-Acceptance criteria: 8
-Evidence required: command outputs, import E2E output, relaunch-persistence proof, screenshot
-Depends on phases: 1
-
-## Why
-
-FCP's organization model (Library→Event→Project) and the filmstrip browser are half its identity and feed every later phase.
+Phase: 2 of 7 — Timecode click-to-type seeking
+Task: Add parseTimecode to shared/timecode.ts and make both transport timecodes click-to-edit inputs that seek on Enter.
+Mandatory commands: npm run typecheck; npm run lint; npm run test; npm run build; npx playwright test e2e/ux-controls.spec.ts
+Acceptance criteria: 7
+Evidence required: parseTimecode unit test output; E2E output for seek-by-typing, cancel, and invalid-input cases
+Depends on phases: none
 
 ## Work
 
-- `src/shared/types.ts`: `Library { id, name, path, events[] }`, `Event { id, name, assetIds[], projectIds[] }`, `Project { id, name, sequence }` (sequence fleshed out in P4 — stub type now), `MediaAsset { id, fileName, libraryRelPath, contentHash, video?: {codec,w,h,fps,durationFlicks}, audio?: {codec,channels,sampleRate}, rating: 'none'|'favorite'|'rejected', filmstrip?: {stripPath,frameW,frameCount,intervalFlicks}, waveform?: {peaksPath} }`.
-- `src/main/project-io/`: library is a folder `<name>.mglib/` containing `library.json`, `events/*.json`, `projects/*.json`, `media/` (imported copies), `cache/` (filmstrips, peaks, transcripts later). Atomic writes: write temp + rename. Autosave debounced. On launch: reopen last library (path in electron `userData` settings.json) or create default at `~/Videos/Magnetic.mglib`.
-- Import: File→Import (and drag-drop onto browser) → copy files into `media/`, sha1 contentHash, ffprobe metadata (`-print_format json -show_streams -show_format`), create MediaAsset. Reject unreadable files with a per-file error toast listing the reason.
-- Background job queue in main (`src/main/jobs/`): simple FIFO with concurrency 2, progress events over IPC. Jobs: (a) filmstrip — single horizontal strip JPEG via ffmpeg `select`/fps filter, ~1 frame per N sec scaled to 60 px tall; (b) waveform peaks — ffmpeg PCM → min/max peak pairs JSON (~1000 buckets). Browser shows placeholder shimmer until ready.
-- `src/renderer/browser/`: left sidebar (library > events tree), main area filmstrip **grid** + **list** toggle. Each cell: filmstrip image, name, duration badge, rating mark. Hover-skim: pointer x within cell maps to strip frame (background-position) AND shows that frame; favorite (F), reject (Del→ marks rejected, hidden by filter), unrate (U). Search box filters by name. Filter dropdown: All / Favorites / Hide Rejected.
-- Selection model: single + range (shift). Selected asset shows in viewer placeholder (wired for P3).
-- `e2e/browser.spec.ts`: import fixtures via IPC test hook (expose `api.__test.importPaths(paths)` guarded by env flag), assert grid population, skim, rate, search, relaunch persistence (electronApp.close() then relaunch, assert state).
+Spec section: "2. Timecode click-to-type seeking".
 
-## Acceptance criteria (all must pass — verify each in transcript)
+- src/shared/timecode.ts: add `parseTimecode(text: string, fps: number): number | null`
+  returning flicks. Accepted forms:
+  - colon-separated fields read right-to-left as FF, SS, MM, HH
+    ("00:01:02:12", "1:02:12", "02:12", "12")? NO — a single bare token is
+    digits-run form below; colon forms need ≥2 fields.
+  - bare digit runs parsed as right-to-left pairs into FF,SS,MM,HH
+    ("1234" → 12s 34f; "90" → 90f).
+  - Overflow normalizes via frame math (90f @ 30fps → 3s 0f).
+  - Whitespace trimmed; anything else (letters, negative, empty) → null.
+  Keep it pure; clamping to [0, duration] happens at call sites.
+- ViewerPanel + SequencePlayer: clicking the timecode swaps it for a
+  monospace `<input data-testid="timecode-input">` prefilled with the current
+  timecode, text selected. Enter → parse; valid → seek (source: media seek
+  path; sequence: seekSequence) and close. Escape or blur → close, no seek.
+  Invalid → input stays open with an error style (red flash/shake class),
+  no seek.
+- The existing shortcuts.ts focus guard (HTMLInputElement) already suppresses
+  single-key shortcuts while the input is focused — add an E2E assertion, not
+  new code, unless a gap is found.
+- Unit tests: src/shared/timecode.test.ts (or extend existing) enumerating
+  every accepted form, overflow, garbage → null.
+- E2E (ux-controls.spec.ts): type a known timecode into the sequence
+  transport, assert playhead timecode reads it back; Escape cancels; garbage
+  leaves playhead unmoved; typing 'l' inside the input does NOT start
+  playback.
 
-- E2E imports the fixtures and asserts grid shows them with correct duration badges
-- Hover-skim over a filmstrip changes the displayed frame (E2E pointer-move assertion)
-- Favorite/reject and search filter the grid (E2E)
-- Library persists: E2E relaunches the app and asserts assets + ratings restored
-- Atomic-write unit tests pass (crash-during-save leaves valid previous JSON)
-- Thumbnails/waveforms generate in background: during generation the E2E performs a rating click and asserts the UI responds (no blocking)
-- All mandatory commands exit 0
-- Screenshot `.supergoal/evidence/phase-2/browser.png`
+## Acceptance criteria
 
-## Mandatory commands (run each, surface last ~10 lines + exit code)
+1. `parseTimecode` exists in src/shared/timecode.ts and unit tests cover: full HH:MM:SS:FF, short colon forms (right-to-left field order), bare digit pairs, overflow normalization, garbage/empty/negative → null. All pass.
+2. Clicking the sequence timecode opens `timecode-input` prefilled + selected (E2E).
+3. Enter with a valid timecode seeks the sequence playhead to it (E2E reads the displayed timecode back).
+4. Escape closes the input without seeking (E2E).
+5. Invalid input keeps the input open with error styling and the playhead unmoved (E2E).
+6. Single-key shortcuts are suppressed while the input is focused (E2E: 'l' typed in the input does not change playing state).
+7. Source viewer timecode behaves the same for media seeking (E2E), and all 5 mandatory commands exit 0.
 
-- `npm run typecheck`
-- `npm run lint`
-- `npm test`
-- `npm run build`
-- `npm run test:e2e`
+## Cleanliness
 
-## Evidence required in transcript
+No console.log/debugger in added lines; no new lint warnings.
 
-- Command outputs; import E2E output; relaunch-persistence proof; `.supergoal/evidence/phase-2/browser.png`
+[Agent prints SUPERGOAL_PHASE_VERIFY and SUPERGOAL_PHASE_DONE here during execution]
 
-## Notes
+## Mandatory commands
 
-- Durations everywhere in flicks (int) from the start — convert from ffprobe seconds once at import. Helper lives in `src/shared/timecode.ts` (created here or P3, whichever comes first — keep one source of truth).
-- ffprobe fps: parse `r_frame_rate` rational (e.g. 30000/1001), never floats.
-- Filmstrip strip width caps at 4096 px to stay GPU-texture-safe later.
-- The `__test` IPC surface must be disabled unless `MAGNETIC_TEST=1` — assert that in a unit test.
+- npm run typecheck
+- npm run lint
+- npm run test
+- npm run build
+- npx playwright test e2e/ux-controls.spec.ts
+
+## Evidence required
+
+- parseTimecode unit test output; E2E output for seek-by-typing, cancel, and invalid-input cases

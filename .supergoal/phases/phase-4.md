@@ -1,55 +1,52 @@
 SUPERGOAL_PHASE_START
-Phase: 4 of 11 — Magnetic timeline kernel
-Task: Pure-TS spine/connected-clip model with all edit ops, magnetic semantics, undo — property-tested, zero DOM
-Type: greenfield
-Mandatory commands: npm run typecheck, npm run lint, npm test, npm run build, npm run test:e2e
-Acceptance criteria: 9
-Evidence required: test count + coverage output, property-test run proof, grep output for DOM-free check
-Depends on phases: 1
-
-## Why
-
-The magnetic timeline is FCP's soul; correctness must be proven in a pure, UI-free library before any pixels are drawn.
+Phase: 4 of 7 — Audio meter
+Task: Render a mono RMS meter in the sequence transport driven by playbackEngine.audioRms().
+Mandatory commands: npm run typecheck; npm run lint; npm run test; npm run build; npx playwright test e2e/ux-controls.spec.ts
+Acceptance criteria: 5
+Evidence required: meter-scale unit test output; E2E output showing non-zero aria-valuenow during tone playback and decay after pause
+Depends on phases: none
 
 ## Work
 
-- `src/shared/timeline/model.ts`: `Sequence { id, fps: Rational, spine: SpineItem[], connected: ConnectedClip[] }`; `SpineItem = Clip | GapClip`; `Clip { id, assetId, mediaInFlicks, durationFlicks }` (timeline position of spine items is DERIVED by summation — single source of truth prevents gap/overlap bugs by construction); `ConnectedClip { id, assetId|titleData, parentClipId, offsetFlicks (from parent start), lane (1+ video above, -1- audio below), mediaIn, duration }`; `Transition` placeholder type (filled in P8). Derived index helpers: `spineStartOf(clipId)`, `clipAtTime(flicks)`, `sequenceDuration()`.
-- `src/shared/timeline/ops.ts` — every op is `(seq, args) → { next: Sequence, inverse: Op }` (pure, structural sharing via immer or hand-rolled): `append`, `insertAt(timeFlicks)` (splits clip if mid-clip, ripples), `overwriteAt`, `connectAt(timeFlicks, lane?)`, `rippleDelete(ids)`, `liftDelete(ids)` (→ GapClip), `blade(clipId, timeFlicks)`, `trimRipple(clipId, edge: 'head'|'tail', deltaFlicks)` (clamped to media bounds + min 1 frame), `roll(editPointIndex, delta)`, `slip(clipId, delta)`, `move(clipId, toIndex)` (rearrange).
-- `src/shared/timeline/magnetic.ts`: connected clips keep `parentClipId` through every spine op — if parent is rippled/moved, they move with it; if parent is deleted, connected clips re-attach to the clip now under their absolute time (FCP behavior) or delete if none. Lane collision: when two connected clips on the same lane would overlap in absolute time, the later-added bumps up a lane (video) / down (audio). Deterministic.
-- `src/shared/timeline/undo.ts`: `UndoStack { apply(op), undo(), redo() }` storing inverses; coalescing group API (`beginGroup/endGroup`) for multi-op commands (used by P10 filler removal).
-- `src/shared/timeline/select.ts`: selection model (clip ids + ranges), pure.
-- Tests (`*.test.ts`, fast-check for property tests):
-  - invariant suite: after ANY randomly generated op sequence (≥200 runs × ≥20 ops): durations all ≥1 frame, media bounds respected, connected parents exist, lane overlaps absent, derived positions strictly increasing.
-  - undo property: apply N random ops, undo N → deep-equal initial; redo N → deep-equal final.
-  - directed cases: blade at boundary no-op; blade sums exact; ripple delete keeps connected attached; roll preserves total duration; slip keeps bounds; trim clamps at media end; insert mid-clip splits correctly; move closes and reopens magnetically.
+Spec section: "4. Audio meter (sequence transport)".
 
-## Acceptance criteria (all must pass — verify each in transcript)
+- src/renderer/viewer/meter-scale.ts: pure
+  `rmsToMeter(rms: number): { fraction: number; zone: 'green'|'yellow'|'red'; db: number }`
+  — dB = 20·log10(rms) floored at −60; fraction maps [−60, 0] → [0, 1];
+  zone breaks at −12 dB (yellow) and −6 dB (red). rms ≤ 0 → floor.
+- src/renderer/viewer/AudioMeter.tsx: slim horizontal bar in the
+  SequencePlayer transport bar. rAF loop reads `playbackEngine.audioRms()`
+  only while the sequence is playing; instant attack, ~300 ms release decay;
+  idle renders zero. `data-testid="sequence-meter"`, `role="meter"`,
+  `aria-valuenow` = current dB (rounded). Zone color via CSS class.
+- Unit tests: src/renderer/viewer/meter-scale.test.ts — floor, both zone
+  boundaries, 0 dB → fraction 1, monotonicity.
+- E2E (ux-controls.spec.ts): build a sequence from the tone fixture, play,
+  poll `sequence-meter`'s aria-valuenow > −60; pause, poll until it returns
+  to the floor.
 
-- ≥80 kernel tests pass, including property test: any random sequence of ops preserves spine invariants (contiguous, no overlap, no implicit gaps)
-- Property test: undo after any op restores deep-equal prior state; redo re-applies
-- Ripple delete shifts downstream clips AND keeps connected clips attached to their parents (explicit tests)
-- Blade at clip boundary is a no-op; blade mid-clip yields two clips whose durations sum exactly (flicks)
-- Roll preserves total duration; slip preserves clip bounds while changing media in-point (tests)
-- Connected-clip collision bumps to next lane, never overlaps (property test)
-- Kernel has zero DOM/Electron imports (grep criterion: no `document`, `window`, `electron` in `src/shared/timeline/`)
-- Kernel line coverage ≥90% (vitest --coverage output in transcript)
-- All mandatory commands exit 0
+## Acceptance criteria
 
-## Mandatory commands (run each, surface last ~10 lines + exit code)
+1. `rmsToMeter` unit tests pass: floor at −60 dB, zone boundaries at −12/−6 dB, rms=1 → fraction 1.
+2. `sequence-meter` renders inside the sequence transport bar with role="meter" and aria-valuenow (E2E presence check).
+3. During tone-fixture playback, aria-valuenow rises above the −60 floor (E2E).
+4. After pause, the meter decays back to the floor (E2E poll, ≤ ~2 s).
+5. Idle/no-engine state renders a zero bar with no console errors; all 5 mandatory commands exit 0.
 
-- `npm run typecheck`
-- `npm run lint`
-- `npm test`
-- `npm run build`
-- `npm run test:e2e`
+## Cleanliness
 
-## Evidence required in transcript
+No console.log/debugger in added lines; no new lint warnings.
 
-- Test count + coverage summary; one property-test run log; `grep -rn "document\|window\|electron" src/shared/timeline/ || echo CLEAN` output
+[Agent prints SUPERGOAL_PHASE_VERIFY and SUPERGOAL_PHASE_DONE here during execution]
 
-## Notes
+## Mandatory commands
 
-- Use the superpowers TDD skill here: write the directed cases red-first for each op.
-- Positions derived, never stored, is the key design decision — do not "optimize" it away; memoize the prefix-sum index instead if profiling demands.
-- fast-check shrinking will find brutal edge cases (0-duration after trim, double-blade same point); fix the op clamps, don't weaken the invariants.
-- Keep ops total-function: invalid args (unknown id, out-of-range time) return `{ next: seq, inverse: noop }` + typed error in a result field — never throw mid-edit.
+- npm run typecheck
+- npm run lint
+- npm run test
+- npm run build
+- npx playwright test e2e/ux-controls.spec.ts
+
+## Evidence required
+
+- meter-scale unit test output; E2E output showing non-zero aria-valuenow during tone playback and decay after pause

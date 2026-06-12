@@ -15,6 +15,7 @@ import {
 } from './layout/layout-state'
 import { Splitter } from './layout/Splitter'
 import { LibraryProvider } from './state/LibraryContext'
+import { useTimelineStore } from './state/timeline-store'
 import { registerShortcut } from './shortcuts'
 
 export default function App(): ReactNode {
@@ -72,6 +73,14 @@ export default function App(): ReactNode {
         combo: 'ctrl+e',
         description: 'Export the sequence as a movie',
         handler: () => setExportVisible(true)
+      }),
+      registerShortcut('app-loop-playback', {
+        combo: 'ctrl+l',
+        description: 'Loop playback on / off',
+        handler: () => {
+          const store = useTimelineStore.getState()
+          store.setLoopPlayback(!store.loopPlayback)
+        }
       }),
       registerShortcut('app-shortcuts', {
         combo: 'shift+?',
