@@ -1,7 +1,8 @@
 # UX improvements round 2: loop, timecode entry, range play, meters, fullscreen, minimap — design
 
 Date: 2026-06-12 (round 2; supersedes the round-1 text of this doc)
-Status: approved (user requested autonomous improve → rebuild)
+Status: shipped 2026-06-12 (commits 16b7e0d..3cccc21; 377 unit + 35 E2E green
+in one run; minimap landed at the canvas bottom — the ruler owns the top edge)
 
 ## Round 1 (shipped in c264516)
 
