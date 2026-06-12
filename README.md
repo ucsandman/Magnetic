@@ -126,24 +126,27 @@ Generated from the live shortcut registry (`scripts/dump-shortcuts.mjs`); `Shift
 
 ```mermaid
 flowchart TB
-    subgraph main["Main process (src/main)"]
-        ipc["IPC (zod-validated handlers)"]
-        lib["LibraryStore (.mglib JSON + media)"]
-        jobs["JobQueue: filmstrip / waveform / proxy / transcribe (ffmpeg + whisper.cpp)"]
-        exp["Export sink: rawvideo pipe -> ffmpeg -> .part -> atomic rename"]
+    subgraph rendererBox["Renderer (src/renderer)"]
+        ui["React UI<br/>browser · viewer · timeline · inspector"]
+        store["zustand timeline store<br/>undo / redo"]
+        engine["Playback engine<br/>WebCodecs decode → WebGL2 compositor<br/>AudioContext-clocked sync"]
     end
-    subgraph renderer["Renderer (src/renderer)"]
-        ui["React UI: browser / viewer / timeline / inspector"]
-        store["zustand timeline store (undo/redo)"]
-        engine["Playback engine: AudioContext clock + WebCodecs decode -> WebGL2 compositor (transforms, color, transitions, titles)"]
+    subgraph sharedBox["Shared (src/shared)"]
+        kernel["Magnetic timeline kernel<br/>pure TS · immutable Sequence<br/>every op returns its inverse"]
     end
-    subgraph shared["Shared (src/shared)"]
-        kernel["Timeline kernel: pure TS, no DOM/Electron - model / ops / magnetic / undo / select / snap / transitions"]
+    subgraph mainBox["Main process (src/main)"]
+        ipc["IPC<br/>zod-validated handlers"]
+        lib["LibraryStore<br/>.mglib JSON + media"]
+        jobs["JobQueue<br/>filmstrip · waveform · proxy<br/>transcribe · envelope"]
+        exp["Export sink<br/>rawvideo pipe → ffmpeg"]
     end
-    ui --> store --> kernel
+    ui --> store
+    store --> kernel
     store --> engine
-    ui -- "window.api (contextBridge preload)" --> ipc
-    ipc --> lib & jobs & exp
+    ui -->|window.api preload bridge| ipc
+    ipc --> lib
+    ipc --> jobs
+    ipc --> exp
 ```
 
 - `src/shared/timeline/` — the magnetic-timeline kernel: pure functions over an immutable `Sequence`; clip positions are derived by summation so overlaps are unrepresentable; every op returns its inverse for undo
