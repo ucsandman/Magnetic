@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { readJson, writeJsonAtomic } from './atomic'
+import { readJson, renameWithRetry, writeJsonAtomic } from './atomic'
 
 let dir: string
 
@@ -45,5 +45,65 @@ describe('writeJsonAtomic', () => {
     // Simulate the crash: a partial temp file exists, rename never happened.
     writeFileSync(join(dir, '.tmp-9999-library.json'), '{"version": 2, "trunca', 'utf8')
     expect(readJson(file)).toEqual({ version: 1 })
+  })
+})
+
+describe('rename retry (Windows EBUSY from AV/indexer scans)', () => {
+  const ebusy = (): never => {
+    const error = new Error('EBUSY: resource busy or locked') as NodeJS.ErrnoException
+    error.code = 'EBUSY'
+    throw error
+  }
+  const noSleep = (): void => {}
+
+  it('retries EBUSY renames and succeeds once the lock clears', () => {
+    let calls = 0
+    let renamed: [string, string] | null = null
+    renameWithRetry(
+      'from',
+      'to',
+      (from, to) => {
+        calls += 1
+        if (calls <= 2) ebusy()
+        renamed = [from, to]
+      },
+      noSleep
+    )
+    expect(calls).toBe(3)
+    expect(renamed).toEqual(['from', 'to'])
+  })
+
+  it('gives up after persistent EBUSY and rethrows', () => {
+    let calls = 0
+    expect(() =>
+      renameWithRetry(
+        'from',
+        'to',
+        () => {
+          calls += 1
+          ebusy()
+        },
+        noSleep
+      )
+    ).toThrow(/EBUSY/)
+    expect(calls).toBe(6)
+  })
+
+  it('does not retry non-lock errors', () => {
+    let calls = 0
+    expect(() =>
+      renameWithRetry(
+        'from',
+        'to',
+        () => {
+          calls += 1
+          const error = new Error('ENOENT: no such file') as NodeJS.ErrnoException
+          error.code = 'ENOENT'
+          throw error
+        },
+        noSleep
+      )
+    ).toThrow(/ENOENT/)
+    expect(calls).toBe(1)
   })
 })

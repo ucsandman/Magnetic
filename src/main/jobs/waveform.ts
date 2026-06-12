@@ -47,8 +47,12 @@ export async function generateWaveform(
   return { peaksPath: peaksRelPath }
 }
 
-/** Decode the first audio stream to mono 16-bit PCM at 8 kHz (shared with audio-envelope). */
-export function decodePcm(filePath: string): Promise<Buffer> {
+/**
+ * Stream the first audio stream as mono 16-bit PCM at 8 kHz. Chunks go to the
+ * caller as they decode — multi-hour files never accumulate in memory (the
+ * audio-envelope job uses this; ~244 MB of PCM for a 4-hour recording).
+ */
+export function streamPcm(filePath: string, onData: (chunk: Buffer) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       ffmpegPath(),
@@ -69,14 +73,20 @@ export function decodePcm(filePath: string): Promise<Buffer> {
       ],
       { windowsHide: true }
     )
-    const chunks: Buffer[] = []
     let stderr = ''
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk))
+    child.stdout.on('data', onData)
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()))
     child.on('error', reject)
     child.on('close', (code) => {
-      if (code === 0) resolve(Buffer.concat(chunks))
+      if (code === 0) resolve()
       else reject(new Error(`ffmpeg pcm decode failed (${code}): ${stderr.split(/\r?\n/)[0]}`))
     })
   })
+}
+
+/** Decode the whole PCM stream into one buffer (waveform peaks need the total length). */
+export async function decodePcm(filePath: string): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  await streamPcm(filePath, (chunk) => chunks.push(chunk))
+  return Buffer.concat(chunks)
 }

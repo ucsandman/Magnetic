@@ -13,7 +13,37 @@ export function writeJsonAtomic(filePath: string, value: unknown): void {
   mkdirSync(dirname(filePath), { recursive: true })
   const tmpPath = join(dirname(filePath), `.tmp-${process.pid}-${basenameOf(filePath)}`)
   writeFileSync(tmpPath, serialized, 'utf8')
-  renameSync(tmpPath, filePath)
+  renameWithRetry(tmpPath, filePath)
+}
+
+const RENAME_ATTEMPTS = 6
+
+/**
+ * On Windows, Defender / Search Indexer briefly open freshly written files,
+ * which makes the rename fail with EBUSY or EPERM. Retry with backoff
+ * (~50–300 ms per step) before giving up — anything else means a real error.
+ * rename/sleep are injectable for tests (fs module namespaces can't be spied).
+ */
+export function renameWithRetry(
+  fromPath: string,
+  toPath: string,
+  rename: (from: string, to: string) => void = renameSync,
+  sleep: (ms: number) => void = sleepSync
+): void {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      rename(fromPath, toPath)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if ((code !== 'EBUSY' && code !== 'EPERM') || attempt >= RENAME_ATTEMPTS) throw error
+      sleep(50 * attempt)
+    }
+  }
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
 /** Read + parse a JSON file written by writeJsonAtomic. Throws on missing/corrupt. */
