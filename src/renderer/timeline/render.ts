@@ -1,5 +1,6 @@
 import { FLICKS_PER_SECOND, flicksToTimecode } from '../../shared/timecode'
-import type { Sequence } from '../../shared/timeline/model'
+import { sequenceDuration, type Sequence } from '../../shared/timeline/model'
+import { minimapLayout } from './minimap'
 import { keyframeMarkerTimes } from '../../shared/timeline/fx-eval'
 import { spineStartIndex } from '../../shared/timeline/magnetic'
 import { editPointIndexOfCut, transitionsOf } from '../../shared/timeline/transitions'
@@ -669,5 +670,74 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
     ctx.fill()
   }
 
+  drawMinimap(ctx, state)
+
   return rects
+}
+
+/**
+ * Bottom-anchored minimap: the whole sequence scaled to the canvas width,
+ * with spine/connected blocks, the playhead tick, and the viewport rect.
+ * Only drawn while the content is wider than the canvas (layout non-null).
+ */
+function drawMinimap(ctx: CanvasRenderingContext2D, state: RenderState): void {
+  const minimap = minimapLayout({
+    durationFlicks: sequenceDuration(state.sequence),
+    zoomPxPerSec: state.zoomPxPerSec,
+    scrollX: state.scrollX,
+    width: state.width,
+    height: state.height
+  })
+  if (minimap === null) return
+
+  ctx.fillStyle = COLORS.rulerBg
+  ctx.fillRect(0, minimap.y, state.width, minimap.h)
+  ctx.strokeStyle = COLORS.rulerTick
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(0, minimap.y + 0.5)
+  ctx.lineTo(state.width, minimap.y + 0.5)
+  ctx.stroke()
+
+  // spine blocks (gaps stay background-colored)
+  let position = 0
+  for (const item of state.sequence.spine) {
+    const w = (item.durationFlicks / FLICKS_PER_SECOND) * minimap.pxPerSec
+    if (item.kind === 'clip') {
+      ctx.fillStyle = COLORS.videoClip
+      ctx.fillRect(
+        (position / FLICKS_PER_SECOND) * minimap.pxPerSec,
+        minimap.y + 9,
+        Math.max(1, w - 0.5),
+        6
+      )
+    }
+    position += item.durationFlicks
+  }
+
+  // connected clips: a thin upper band (video lanes blue, audio lanes green)
+  const startOf = spineStartIndex(state.sequence.spine)
+  for (const cc of state.sequence.connected) {
+    const parentStart = startOf.get(cc.parentClipId)
+    if (parentStart === undefined) continue
+    const start = parentStart + cc.offsetFlicks
+    const w = (cc.durationFlicks / FLICKS_PER_SECOND) * minimap.pxPerSec
+    ctx.fillStyle = cc.lane > 0 ? COLORS.videoClip : COLORS.audioClip
+    ctx.fillRect((start / FLICKS_PER_SECOND) * minimap.pxPerSec, minimap.y + 4, Math.max(1, w), 3)
+  }
+
+  // playhead tick
+  const playheadStripX = (state.playheadFlicks / FLICKS_PER_SECOND) * minimap.pxPerSec
+  ctx.strokeStyle = COLORS.playhead
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(playheadStripX + 0.5, minimap.y + 1)
+  ctx.lineTo(playheadStripX + 0.5, minimap.y + minimap.h)
+  ctx.stroke()
+
+  // viewport rect
+  ctx.fillStyle = '#ffffff14'
+  ctx.fillRect(minimap.viewportX, minimap.y + 1, minimap.viewportW, minimap.h - 1)
+  ctx.strokeStyle = COLORS.rulerText
+  ctx.strokeRect(minimap.viewportX + 0.5, minimap.y + 1.5, minimap.viewportW - 1, minimap.h - 2)
 }

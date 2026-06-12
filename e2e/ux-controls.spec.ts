@@ -478,6 +478,72 @@ test('viewer fullscreen: ⛶ fullscreens the panel, Escape exits, grid mode has 
   await app.close()
 })
 
+interface TimelineViewState {
+  scrollX: number
+  minimap: { y: number; viewportX: number; viewportW: number } | null
+}
+
+function getView(page: Page): Promise<TimelineViewState> {
+  return page.evaluate(() =>
+    (
+      window as unknown as { __magneticTimeline: { view(): TimelineViewState } }
+    ).__magneticTimeline.view()
+  )
+}
+
+test('timeline minimap: appears past one screen, drag pans, playback pages, paused pans stay put', async () => {
+  test.setTimeout(240_000)
+  const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-ux-mm-'))
+  const app = await launchApp(join(tempRoot, 'UxMm.mglib'))
+  const page = await app.firstWindow()
+  await importFixtures(page, ['bars-1080p30.mp4'])
+
+  // 10 s sequence at default zoom fits the canvas → no minimap
+  await page.getByTestId('asset-cell-bars-1080p30.mp4').click()
+  await page.keyboard.press('e')
+  await page.getByTestId('timeline-canvas').click({ position: { x: 5, y: 8 } })
+  expect((await getView(page)).minimap).toBeNull()
+
+  // zoom far in → content wider than the canvas → minimap appears
+  for (let i = 0; i < 8; i++) await page.keyboard.press('=')
+  const shown = await getView(page)
+  expect(shown.minimap).not.toBeNull()
+  expect(shown.scrollX).toBe(0)
+
+  // drag inside the strip pans the view (scrollX follows the pointer)
+  const canvasBox = (await page.getByTestId('timeline-canvas').boundingBox())!
+  const stripY = canvasBox.y + shown.minimap!.y + 9
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.75, stripY)
+  await page.mouse.down()
+  const midDrag = await getView(page)
+  expect(midDrag.scrollX).toBeGreaterThan(0) // click already centered there
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.9, stripY, { steps: 6 })
+  await page.mouse.up()
+  const afterDrag = await getView(page)
+  expect(afterDrag.scrollX).toBeGreaterThan(midDrag.scrollX)
+  expect(afterDrag.minimap!.viewportX).toBeGreaterThan(0)
+
+  // while PAUSED, the view is never auto-adjusted
+  await page.waitForTimeout(1_200)
+  expect((await getView(page)).scrollX).toBe(afterDrag.scrollX)
+
+  // playback pages the view: park at 0 (left of the panned view), play —
+  // first page snaps back to the playhead, later pages walk forward
+  await page.keyboard.press('Home')
+  await page.keyboard.press(' ')
+  await expect(page.getByTestId('sequence-playing')).toHaveText('playing')
+  await expect
+    .poll(async () => (await getView(page)).scrollX, { timeout: 5_000 })
+    .toBeLessThan(afterDrag.scrollX) // paged back to the wrapped playhead
+  const pagedBack = (await getView(page)).scrollX
+  await expect
+    .poll(async () => (await getView(page)).scrollX, { timeout: 20_000 })
+    .toBeGreaterThan(pagedBack) // ...then forward as it crosses the right edge
+  await page.keyboard.press(' ')
+
+  await app.close()
+})
+
 test('layout: splitter drag resizes the browser, Reset Layout restores defaults, Shift+Z fits', async () => {
   test.setTimeout(240_000)
   const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-ux-layout-'))

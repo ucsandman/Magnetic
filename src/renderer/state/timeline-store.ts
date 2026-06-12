@@ -62,6 +62,7 @@ import { UndoStack, type Op } from '../../shared/timeline/undo'
 import { playbackEngine } from '../playback/engine'
 import { loadLoopPref, saveLoopPref } from '../playback/loop'
 import { measureDraws } from '../timeline/perf'
+import { timelineView } from '../timeline/view-probe'
 
 /**
  * Timeline state. Every sequence mutation goes through a kernel op applied on
@@ -714,6 +715,8 @@ export function installTimelineTestHooks(): void {
     setClipFx(clipId: string, fx: ClipFx) {
       useTimelineStore.getState().setFx(clipId, fx)
     },
+    /** Canvas-local view state (scrollX/minimap) — see view-probe.ts. */
+    view: () => timelineView(),
     playback: {
       readPixels: (x: number, y: number, w: number, h: number) =>
         playbackEngine.readPixels(x, y, w, h),

@@ -37,6 +37,8 @@ import {
   type RenderState,
   type SlipPreview
 } from './render'
+import { minimapLayout, pagedScrollX, scrollXForMinimapX, type MinimapView } from './minimap'
+import { registerViewProbe } from './view-probe'
 
 /** Snap tolerance for drags, in CSS px (converted to flicks at current zoom). */
 const SNAP_TOLERANCE_PX = 9
@@ -44,7 +46,7 @@ const SNAP_TOLERANCE_PX = 9
 const DRAG_THRESHOLD_PX = 4
 
 interface DragState {
-  mode: 'move' | 'trim' | 'trim-connected' | 'roll' | 'slip' | 'playhead'
+  mode: 'move' | 'trim' | 'trim-connected' | 'roll' | 'slip' | 'playhead' | 'minimap'
   clipId: string
   /** trim: which clip edge is being dragged. */
   edge: 'head' | 'tail'
@@ -109,6 +111,14 @@ export function TimelineCanvas(): ReactNode {
     }
   }, [])
 
+  const minimapViewOf = (state: RenderState): MinimapView => ({
+    durationFlicks: sequenceDuration(state.sequence),
+    zoomPxPerSec: state.zoomPxPerSec,
+    scrollX: scrollXRef.current,
+    width: state.width,
+    height: state.height
+  })
+
   /** Synchronous full draw; returns ms spent (perf harness uses this). */
   const drawNow = useCallback((): number => {
     const canvas = canvasRef.current
@@ -139,7 +149,17 @@ export function TimelineCanvas(): ReactNode {
   }, [drawNow])
 
   useEffect(() => {
-    const unsubscribe = useTimelineStore.subscribe(() => scheduleDraw())
+    const unsubscribe = useTimelineStore.subscribe((storeState) => {
+      // follow-playhead paging — during playback only, never while paused
+      if (storeState.isSequencePlaying && storeState.sequence !== null) {
+        const state = buildRenderState()
+        if (state !== null) {
+          const paged = pagedScrollX(minimapViewOf(state), storeState.playheadFlicks)
+          if (paged !== null) scrollXRef.current = paged
+        }
+      }
+      scheduleDraw()
+    })
     onMediaReady(() => scheduleDraw())
     const observer = new ResizeObserver(() => scheduleDraw())
     if (containerRef.current !== null) observer.observe(containerRef.current)
@@ -149,7 +169,7 @@ export function TimelineCanvas(): ReactNode {
       observer.disconnect()
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
     }
-  }, [scheduleDraw])
+  }, [scheduleDraw, buildRenderState])
 
   // redraw when the library snapshot brings filmstrips/waveforms online
   useEffect(() => {
@@ -190,6 +210,23 @@ export function TimelineCanvas(): ReactNode {
     return () => registerDrawDriver(null)
   }, [drawNow])
 
+  // canvas-local view state for E2E (__magneticTimeline.view())
+  useEffect(() => {
+    registerViewProbe(() => {
+      const state = buildRenderState()
+      if (state === null) return { scrollX: scrollXRef.current, minimap: null }
+      const minimap = minimapLayout(minimapViewOf(state))
+      return {
+        scrollX: scrollXRef.current,
+        minimap:
+          minimap === null
+            ? null
+            : { y: minimap.y, viewportX: minimap.viewportX, viewportW: minimap.viewportW }
+      }
+    })
+    return () => registerViewProbe(null)
+  }, [buildRenderState])
+
   const hitTest = (state: RenderState, x: number, y: number): ClipRect | null => {
     // fresh geometry from current state — never stale; back-to-front (connected on top)
     const rects = computeClipRects(state)
@@ -219,6 +256,11 @@ export function TimelineCanvas(): ReactNode {
     if (drag === null || state === null) return
     const store = useTimelineStore.getState()
     const x = clientX - canvasRef.current!.getBoundingClientRect().left
+    if (drag.mode === 'minimap') {
+      scrollXRef.current = scrollXForMinimapX(minimapViewOf(state), x)
+      scheduleDraw()
+      return
+    }
     if (drag.mode === 'playhead') {
       store.setPlayhead(xToTime(state, x))
       return
@@ -450,6 +492,25 @@ export function TimelineCanvas(): ReactNode {
     const state = buildRenderState()
     if (state === null) return
     const { x, y } = localPoint(event)
+    // minimap strip claims the gesture before any clip/ruler hit-testing
+    const minimap = minimapLayout(minimapViewOf(state))
+    if (minimap !== null && y >= minimap.y) {
+      scrollXRef.current = scrollXForMinimapX(minimapViewOf(state), x)
+      dragRef.current = {
+        mode: 'minimap',
+        clipId: '',
+        edge: 'tail',
+        editPointIndex: -1,
+        startX: x,
+        started: true,
+        origBoundaryFlicks: 0,
+        pendingDeltaFlicks: 0,
+        pendingToIndex: -1
+      }
+      beginDragCapture()
+      scheduleDraw()
+      return
+    }
     if (y <= RULER_H) {
       store.setViewerMode('sequence') // scrubbing shows the sequence frame
       store.setPlayhead(xToTime(state, x))
