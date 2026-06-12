@@ -690,6 +690,7 @@ export function TimelineCanvas(): ReactNode {
         {
           id: 'copy',
           label: 'Copy',
+          separatorBefore: true,
           onSelect: () => useTimelineStore.getState().copySelection()
         },
         {
@@ -712,7 +713,7 @@ export function TimelineCanvas(): ReactNode {
         {
           id: 'ripple-delete',
           label: 'Ripple Delete',
-          danger: true,
+          separatorBefore: true,
           disabled: !isSpineClip,
           onSelect: () => {
             store.selectClip(clipId, false)

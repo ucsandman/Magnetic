@@ -5,6 +5,8 @@ export interface ContextMenuItem {
   label: string
   disabled?: boolean
   danger?: boolean
+  /** Draw a hairline separator above this item (macOS menu group break). */
+  separatorBefore?: boolean
   onSelect(): void
 }
 
@@ -25,6 +27,9 @@ export function ContextMenu({ menu, onClose }: ContextMenuProps): ReactNode {
 
   // Clamp into the viewport: menus opened near the bottom edge (the timeline
   // is the bottom panel) would otherwise overflow and hide their last items.
+  /* eslint-disable react-hooks/set-state-in-effect -- measure-then-position: the
+     menu must render hidden first so its size is known before clamping (React's
+     documented useLayoutEffect measurement pattern) */
   useLayoutEffect(() => {
     if (menu === null) {
       setPosition(null)
@@ -38,6 +43,7 @@ export function ContextMenu({ menu, onClose }: ContextMenuProps): ReactNode {
       top: Math.max(0, Math.min(menu.y, window.innerHeight - height - 4))
     })
   }, [menu])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (menu === null) return
@@ -69,20 +75,22 @@ export function ContextMenu({ menu, onClose }: ContextMenuProps): ReactNode {
       onContextMenu={(event) => event.preventDefault()}
     >
       {menu.items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className={item.danger ? 'danger' : ''}
-          data-testid={`context-${item.id}`}
-          disabled={item.disabled}
-          onClick={() => {
-            if (item.disabled) return
-            item.onSelect()
-            onClose()
-          }}
-        >
-          {item.label}
-        </button>
+        <div key={item.id}>
+          {item.separatorBefore === true && <div className="context-separator" />}
+          <button
+            type="button"
+            className={item.danger ? 'danger' : ''}
+            data-testid={`context-${item.id}`}
+            disabled={item.disabled}
+            onClick={() => {
+              if (item.disabled) return
+              item.onSelect()
+              onClose()
+            }}
+          >
+            {item.label}
+          </button>
+        </div>
       ))}
     </div>
   )

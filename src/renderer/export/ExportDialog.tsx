@@ -192,6 +192,7 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
             <div className="export-actions">
               <button
                 type="button"
+                className="primary"
                 data-testid="export-start"
                 disabled={destination.trim() === '' || empty}
                 onClick={() => void start()}

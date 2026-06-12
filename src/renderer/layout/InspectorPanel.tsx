@@ -488,7 +488,7 @@ function CaptionFields({ sequence }: { sequence: Sequence }): ReactNode {
         <input
           type="text"
           data-testid="captions-destination"
-          placeholder="(empty: ask via save dialog)"
+          placeholder="Ask where to save"
           value={destination}
           onChange={(event) => setDestination(event.target.value)}
         />

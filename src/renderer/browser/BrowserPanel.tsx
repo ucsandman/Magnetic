@@ -120,12 +120,12 @@ export function BrowserPanel(): ReactNode {
         {
           id: 'favorite',
           label: 'Favorite',
+          separatorBefore: true,
           onSelect: () => targetIds.forEach((id) => void window.api.setAssetRating(id, 'favorite'))
         },
         {
           id: 'reject',
           label: 'Reject',
-          danger: true,
           onSelect: () => targetIds.forEach((id) => void window.api.setAssetRating(id, 'rejected'))
         },
         {
@@ -136,6 +136,7 @@ export function BrowserPanel(): ReactNode {
         {
           id: 'transcribe',
           label: 'Transcribe',
+          separatorBefore: true,
           disabled: audioAssets.length === 0,
           onSelect: () =>
             audioAssets.forEach((candidate) => void window.api.transcribeAsset(candidate.id))
@@ -150,6 +151,7 @@ export function BrowserPanel(): ReactNode {
           id: 'delete-media',
           label: deleteLabel,
           danger: true,
+          separatorBefore: true,
           onSelect: deleteAssets
         }
       ]

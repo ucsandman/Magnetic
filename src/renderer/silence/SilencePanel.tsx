@@ -242,6 +242,7 @@ export function SilencePanel({ onClose }: { onClose(): void }): ReactNode {
       <div className="silence-actions">
         <button
           type="button"
+          className="primary"
           data-testid="silence-apply"
           disabled={included.length === 0}
           title="Ripple-delete every checked gap (one undo step)"

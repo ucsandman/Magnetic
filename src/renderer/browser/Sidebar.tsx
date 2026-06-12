@@ -63,7 +63,10 @@ export function Sidebar({ snapshot, selectedEventId, onSelectEvent }: SidebarPro
             void window.api.setSettings({ autoTranscribe: event.target.checked })
           }}
         />
-        Auto-transcribe (clips under 30 min)
+        <span>
+          Auto-transcribe
+          <span className="sidebar-setting-note">clips under 30 min</span>
+        </span>
       </label>
     </nav>
   )
