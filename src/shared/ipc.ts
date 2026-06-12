@@ -116,7 +116,9 @@ const connectedClipSchema = z.object({
   sourceDurationFlicks: z.number().positive(),
   fx: clipFxSchema.optional(),
   titleData: titleDataSchema.optional(),
-  audioDisabled: z.boolean().optional()
+  audioDisabled: z.boolean().optional(),
+  /** Loop-to-fill music bed (z.object strips unknown keys — must be declared). */
+  loop: z.boolean().optional()
 })
 
 const captionSettingsSchema = z.object({
@@ -197,6 +199,24 @@ export interface MagneticApi {
   /** Close the pipe, await ffmpeg, atomic-rename `.part` → destination. */
   exportFinish(): Promise<void>
   exportCancel(): Promise<void>
+  /** Smart render (video passthrough): open the temp mix wav next to the destination. */
+  smartExportStart(args: {
+    destination: string
+    assetId: string
+    /** Trim start within the source, seconds (-ss; keyframe-snapped on copy). */
+    inSec: number
+    /** Trim duration, seconds (-t and the mix length). */
+    durSec: number
+    sampleRate: number
+    channels: number
+  }): Promise<void>
+  /** One interleaved Int16 PCM chunk; resolves after it hit the wav on disk. */
+  smartExportAudioChunk(pcm: ArrayBuffer): Promise<void>
+  /** Finalize the wav, stream-copy video + encode audio in one ffmpeg run. */
+  smartExportMux(): Promise<void>
+  smartExportCancel(): Promise<void>
+  /** ffmpeg -progress pushes during the smartExportMux copy phase. */
+  onSmartExportProgress(cb: (progress: { outTimeSec: number }) => void): () => void
   /** Queue (or re-queue) transcription of an asset with audio. */
   transcribeAsset(assetId: string): Promise<void>
   /** Native save dialog for a caption sidecar; null when cancelled. */

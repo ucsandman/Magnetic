@@ -21,6 +21,15 @@ const api: MagneticApi = {
   exportFrame: (frame) => ipcRenderer.invoke(IPC.exportFrame, { frame }),
   exportFinish: () => ipcRenderer.invoke(IPC.exportFinish),
   exportCancel: () => ipcRenderer.invoke(IPC.exportCancel),
+  smartExportStart: (args) => ipcRenderer.invoke(IPC.smartExportStart, args),
+  smartExportAudioChunk: (pcm) => ipcRenderer.invoke(IPC.smartExportAudioChunk, { pcm }),
+  smartExportMux: () => ipcRenderer.invoke(IPC.smartExportMux),
+  smartExportCancel: () => ipcRenderer.invoke(IPC.smartExportCancel),
+  onSmartExportProgress: (cb) => {
+    const listener = (_event: unknown, progress: { outTimeSec: number }): void => cb(progress)
+    ipcRenderer.on(IPC.smartExportProgress, listener)
+    return () => ipcRenderer.removeListener(IPC.smartExportProgress, listener)
+  },
   transcribeAsset: (assetId) => ipcRenderer.invoke(IPC.transcribeRun, { assetId }),
   captionsPickDestination: (format) => ipcRenderer.invoke(IPC.captionsPickDestination, { format }),
   captionsWriteSidecar: (destination, content) =>

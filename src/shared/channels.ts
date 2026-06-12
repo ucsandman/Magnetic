@@ -21,6 +21,12 @@ export const IPC = {
   exportFrame: 'export:frame',
   exportFinish: 'export:finish',
   exportCancel: 'export:cancel',
+  smartExportStart: 'smartExport:start',
+  smartExportAudioChunk: 'smartExport:audioChunk',
+  smartExportMux: 'smartExport:mux',
+  smartExportCancel: 'smartExport:cancel',
+  /** main -> renderer push: ffmpeg -progress out_time during the copy/mux phase */
+  smartExportProgress: 'smartExport:progress',
   transcribeRun: 'transcribe:run',
   captionsPickDestination: 'captions:pickDestination',
   captionsWriteSidecar: 'captions:writeSidecar',

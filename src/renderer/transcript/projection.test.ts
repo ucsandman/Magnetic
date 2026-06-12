@@ -37,6 +37,33 @@ describe('projectTranscript', () => {
     expect(words[0].clipId).toBe('a:audio')
   })
 
+  it('skips looped connected clips (music beds, wrapped media math)', () => {
+    const s = seq(
+      [clip('a', 60)],
+      [
+        {
+          id: 'music',
+          assetId: 'asset-music',
+          parentClipId: 'a',
+          offsetFlicks: 0,
+          lane: -1,
+          mediaInFlicks: 0,
+          durationFlicks: 60 * F,
+          sourceDurationFlicks: 20 * F,
+          loop: true
+        }
+      ]
+    )
+    const words = projectTranscript(
+      s,
+      new Map([
+        ['asset-a', transcript([['speech', 10, 20]])],
+        ['asset-music', transcript([['lyric', 1, 2]])]
+      ])
+    )
+    expect(words.map((word) => word.text)).toEqual(['speech'])
+    expect(words[0].clipId).toBe('a')
+  })
 
   it('maps words through mediaIn into sequence time and drops mid-cut words', () => {
     // clip shows media [60, 120); word A inside, word B straddles the cut

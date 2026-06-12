@@ -22,6 +22,28 @@ export function dbToGain(volumeDb: number): number {
   return Math.pow(10, volumeDb / 20)
 }
 
+/**
+ * Clip a gain polyline at `atTime`: earlier points are dropped and replaced by
+ * the linearly interpolated value AT atTime. A chunked offline render whose
+ * chunk boundary lands mid-ramp resumes the ramp at the exact value the
+ * previous chunk ended on — no seam discontinuity (the live graph instead
+ * clamps past anchors to "now", which is fine for an audible seek but would
+ * put a click at every chunk boundary of an export).
+ */
+export function clipGainPoints(points: GainPoint[], atTime: number): GainPoint[] {
+  if (points.length === 0 || points[0].atCtxTime >= atTime) return points
+  let last = 0
+  while (last + 1 < points.length && points[last + 1].atCtxTime < atTime) last += 1
+  const from = points[last]
+  const next = points[last + 1]
+  const value =
+    next === undefined || next.atCtxTime <= from.atCtxTime
+      ? from.value
+      : from.value +
+        ((atTime - from.atCtxTime) / (next.atCtxTime - from.atCtxTime)) * (next.value - from.value)
+  return [{ atCtxTime: atTime, value }, ...points.slice(last + 1)]
+}
+
 export function gainAutomationFor(args: GainEnvelopeArgs): GainPoint[] {
   const gain = dbToGain(args.volumeDb)
   // fades never overlap: each clamps to half the clip

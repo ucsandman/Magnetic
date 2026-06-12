@@ -485,13 +485,50 @@ export function trimConnected(
       durationFlicks: cc.durationFlicks - delta
     }
   } else {
-    const duration = clamp(
-      cc.durationFlicks + args.deltaFlicks,
-      minFlicks,
-      cc.sourceDurationFlicks - cc.mediaInFlicks
-    )
+    // looped clips tile their media, so the source-end clamp does not apply
+    const maxDuration =
+      cc.loop === true ? Number.MAX_SAFE_INTEGER : cc.sourceDurationFlicks - cc.mediaInFlicks
+    const duration = clamp(cc.durationFlicks + args.deltaFlicks, minFlicks, maxDuration)
     if (duration === cc.durationFlicks) return noop(seq)
     replacement = { ...cc, durationFlicks: duration }
+  }
+  const connected = [...seq.connected]
+  connected[index] = replacement
+  return ok(seq, seq.spine, connected)
+}
+
+/**
+ * Set or clear a connected clip's loop-to-fill flag (undoable). Setting it
+ * lifts trimConnected's tail clamp so the clip can stretch past its source
+ * (the media tiles — see ConnectedClip.loop). Clearing it restores the
+ * non-loop invariant in the same op: mediaIn is normalized back into the
+ * source (head trims on a looped clip may push it past the end) and the
+ * duration is clamped to the remaining source window — one atomic undo step,
+ * never an out-of-bounds non-loop clip.
+ */
+export function setConnectedLoop(seq: Sequence, args: { clipId: string; loop: boolean }): OpResult {
+  const index = seq.connected.findIndex((cc) => cc.id === args.clipId)
+  if (index === -1) return fail(seq, 'unknown-id', `no connected clip "${args.clipId}"`)
+  const cc = seq.connected[index]
+  if (cc.titleData !== undefined) {
+    return fail(seq, 'invalid-target', 'titles carry no media to loop')
+  }
+  if ((cc.loop === true) === args.loop) return noop(seq)
+  let replacement: ConnectedClip
+  if (args.loop) {
+    replacement = { ...cc, loop: true }
+  } else {
+    const minFlicks = flicksPerFrame(seq.fps)
+    const mediaIn = Math.min(
+      cc.mediaInFlicks % cc.sourceDurationFlicks,
+      cc.sourceDurationFlicks - minFlicks
+    )
+    replacement = {
+      ...cc,
+      mediaInFlicks: mediaIn,
+      durationFlicks: clamp(cc.durationFlicks, minFlicks, cc.sourceDurationFlicks - mediaIn)
+    }
+    delete replacement.loop
   }
   const connected = [...seq.connected]
   connected[index] = replacement

@@ -97,6 +97,14 @@ export interface ConnectedClip {
   titleData?: TitleData
   /** Mute this clip's audio (e.g. a paste-connected copy of a detached-audio spine clip). */
   audioDisabled?: boolean
+  /**
+   * Music-bed loop (loop-to-fill): the media tiles to fill durationFlicks —
+   * it plays [mediaIn, sourceDuration), then wraps to the FULL source
+   * [0, sourceDuration) repeatedly. While set, durationFlicks may exceed
+   * sourceDurationFlicks − mediaInFlicks (trimConnected's tail clamp is
+   * lifted); clearing the flag clamps the duration back into the source.
+   */
+  loop?: boolean
 }
 
 export type TransitionKind = 'dissolve' | 'wipeL' | 'wipeR' | 'fadeBlack'

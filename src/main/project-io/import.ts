@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
 import { execFile } from 'child_process'
-import { copyFileSync, createReadStream, existsSync } from 'fs'
+import { copyFileSync, createReadStream, existsSync, linkSync } from 'fs'
 import { basename, extname, join } from 'path'
 import { randomUUID } from 'crypto'
 import { promisify } from 'util'
@@ -16,6 +16,21 @@ const execFileAsync = promisify(execFile)
  * moov-at-end files over the custom mfile:// scheme. */
 const REMUX_EXTENSIONS = new Set(['.mp4', '.mov', '.m4a', '.m4v'])
 
+/**
+ * Byte-identical placement into the library: hardlink when source and
+ * destination share a volume (instant, zero extra disk for a multi-GB
+ * recording), byte copy on ANY link failure (cross-volume EXDEV, permissions,
+ * FAT, …). Deleting a hardlinked library file never touches the original.
+ * Exported for the fs-mocked unit test.
+ */
+export function linkOrCopy(sourcePath: string, destPath: string): void {
+  try {
+    linkSync(sourcePath, destPath)
+  } catch {
+    copyFileSync(sourcePath, destPath)
+  }
+}
+
 async function copyIntoLibrary(sourcePath: string, destPath: string): Promise<void> {
   if (REMUX_EXTENSIONS.has(extname(sourcePath).toLowerCase())) {
     try {
@@ -24,12 +39,12 @@ async function copyIntoLibrary(sourcePath: string, destPath: string): Promise<vo
         ['-v', 'error', '-y', '-i', sourcePath, '-c', 'copy', '-movflags', '+faststart', destPath],
         { windowsHide: true }
       )
-      return
+      return // the remux WRITES a new file — only the byte-copy path can hardlink
     } catch {
       // fall through to byte copy — the file probed fine, so keep it playable-as-is
     }
   }
-  copyFileSync(sourcePath, destPath)
+  linkOrCopy(sourcePath, destPath)
 }
 
 async function sha1OfFile(filePath: string): Promise<string> {

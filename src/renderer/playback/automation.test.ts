@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { gainAutomationFor } from './automation'
+import { clipGainPoints, gainAutomationFor } from './automation'
 
 describe('gainAutomationFor', () => {
   it('a fade-in yields a rising envelope from 0 to the clip gain', () => {
@@ -65,5 +65,58 @@ describe('gainAutomationFor', () => {
     expect(times).toEqual([...times].sort((a, b) => a - b))
     expect(points[0].value).toBe(0)
     expect(points[points.length - 1].value).toBe(0)
+  })
+})
+
+describe('clipGainPoints', () => {
+  it('returns the input unchanged when no point precedes atTime', () => {
+    const points = [
+      { atCtxTime: 0, value: 0 },
+      { atCtxTime: 1, value: 1 }
+    ]
+    expect(clipGainPoints(points, 0)).toBe(points)
+    expect(clipGainPoints(points, -5)).toBe(points)
+  })
+
+  it('interpolates mid-ramp: a chunk boundary inside a fade resumes at the exact value', () => {
+    // fade-in 0→1 over [-2, 3]; at t=0 the ramp is 40% done
+    const clipped = clipGainPoints(
+      [
+        { atCtxTime: -2, value: 0 },
+        { atCtxTime: 3, value: 1 }
+      ],
+      0
+    )
+    expect(clipped[0].atCtxTime).toBe(0)
+    expect(clipped[0].value).toBeCloseTo(0.4, 10)
+    expect(clipped.slice(1)).toEqual([{ atCtxTime: 3, value: 1 }])
+  })
+
+  it('holds the last value when every point is in the past', () => {
+    const clipped = clipGainPoints(
+      [
+        { atCtxTime: -5, value: 0 },
+        { atCtxTime: -2, value: 0.7 }
+      ],
+      0
+    )
+    expect(clipped).toEqual([{ atCtxTime: 0, value: 0.7 }])
+  })
+
+  it('drops completed ramps but keeps future ones (fade-in done, fade-out ahead)', () => {
+    const clipped = clipGainPoints(
+      [
+        { atCtxTime: -10, value: 0 },
+        { atCtxTime: -9, value: 1 },
+        { atCtxTime: 40, value: 1 },
+        { atCtxTime: 42, value: 0 }
+      ],
+      0
+    )
+    expect(clipped).toEqual([
+      { atCtxTime: 0, value: 1 },
+      { atCtxTime: 40, value: 1 },
+      { atCtxTime: 42, value: 0 }
+    ])
   })
 })

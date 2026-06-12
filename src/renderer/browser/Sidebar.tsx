@@ -52,7 +52,7 @@ export function Sidebar({ snapshot, selectedEventId, onSelectEvent }: SidebarPro
       </ul>
       <label
         className="sidebar-setting"
-        title="Transcribe assets with audio automatically on import"
+        title="Transcribe assets with audio automatically on import (clips over 30 minutes are skipped — use each asset's Transcribe action instead)"
       >
         <input
           type="checkbox"
@@ -63,7 +63,7 @@ export function Sidebar({ snapshot, selectedEventId, onSelectEvent }: SidebarPro
             void window.api.setSettings({ autoTranscribe: event.target.checked })
           }}
         />
-        Auto-transcribe
+        Auto-transcribe (clips under 30 min)
       </label>
     </nav>
   )

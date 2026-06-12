@@ -19,6 +19,7 @@ import {
   rippleDelete,
   roll,
   setCaptionSettings,
+  setConnectedLoop,
   slip,
   trimConnected,
   trimRipple
@@ -542,6 +543,26 @@ describe('trimConnected', () => {
     expect(next.connected[0].mediaInFlicks).toBe(3 * F)
   })
 
+  it('tail extension past the source is ALLOWED when loop is set (media tiles)', () => {
+    const s = seq([clip('a', 10)], [{ ...audioConnected('cc', 'a', 0, 5, 3), loop: true }])
+    const { next, error } = trimConnected(s, {
+      clipId: 'cc',
+      edge: 'tail',
+      deltaFlicks: 1_000 * F
+    })
+    expect(error).toBeUndefined()
+    expect(next.connected[0].durationFlicks).toBe(1_005 * F) // far past 600 frames of source
+    expect(next.connected[0].mediaInFlicks).toBe(3 * F)
+  })
+
+  it('head trim clamps are UNCHANGED for loop clips', () => {
+    const s = seq([clip('a', 10)], [{ ...audioConnected('cc', 'a', 2, 5, 3), loop: true }])
+    const { next } = trimConnected(s, { clipId: 'cc', edge: 'head', deltaFlicks: -100 * F })
+    // media start (mediaIn 3) and absolute 0 (start at 2) — absolute wins at -2
+    expect(next.connected[0].offsetFlicks).toBe(0)
+    expect(next.connected[0].mediaInFlicks).toBe(1 * F)
+  })
+
   it('tail shrink clamps at one frame', () => {
     const s = seq([clip('a', 10)], [audioConnected('cc', 'a', 0, 5)])
     const { next } = trimConnected(s, { clipId: 'cc', edge: 'tail', deltaFlicks: -100 * F })
@@ -563,6 +584,63 @@ describe('trimConnected', () => {
     const result = trimConnected(s, { clipId: 'cc', edge: 'head', deltaFlicks: -2 * F })
     expect(result.inverse.type).toBe('restore')
     expect(result.inverse.sequence).toEqual(s)
+  })
+})
+
+const TITLE = {
+  text: 'T',
+  font: 'system-ui',
+  sizePx: 56,
+  color: '#fff',
+  x: 960,
+  y: 540,
+  preset: 'basic' as const
+}
+
+describe('setConnectedLoop', () => {
+  it('sets loop on a connected clip and is undoable', () => {
+    const s = seq([clip('a', 10)], [audioConnected('cc', 'a', 0, 5)])
+    const result = setConnectedLoop(s, { clipId: 'cc', loop: true })
+    expect(result.error).toBeUndefined()
+    expect(result.next.connected[0].loop).toBe(true)
+    expect(result.inverse.type).toBe('restore')
+    expect(result.inverse.sequence).toEqual(s)
+  })
+
+  it('clearing loop clamps the duration back into the source window', () => {
+    const s = seq([clip('a', 10)], [{ ...audioConnected('cc', 'a', 0, 5, 3), loop: true }])
+    const stretched = trimConnected(s, { clipId: 'cc', edge: 'tail', deltaFlicks: 1_000 * F }).next
+    expect(stretched.connected[0].durationFlicks).toBe(1_005 * F)
+    const { next } = setConnectedLoop(stretched, { clipId: 'cc', loop: false })
+    expect(next.connected[0].loop).toBeUndefined()
+    expect(next.connected[0].durationFlicks).toBe(597 * F) // 600 source - 3 mediaIn
+  })
+
+  it('clearing loop normalizes a mediaIn pushed past the source by head trims', () => {
+    // looped clip stretched to 1000 frames, then head-trimmed forward 650:
+    // mediaIn 650 > source 600 (legal while looping — the media wraps)
+    const s = seq([clip('a', 10)], [{ ...audioConnected('cc', 'a', 0, 5), loop: true }])
+    const long = trimConnected(s, { clipId: 'cc', edge: 'tail', deltaFlicks: 995 * F }).next
+    const shifted = trimConnected(long, { clipId: 'cc', edge: 'head', deltaFlicks: 650 * F }).next
+    expect(shifted.connected[0].mediaInFlicks).toBe(650 * F)
+    const { next } = setConnectedLoop(shifted, { clipId: 'cc', loop: false })
+    const cc = next.connected[0]
+    expect(cc.mediaInFlicks).toBe(50 * F) // 650 mod 600
+    expect(cc.mediaInFlicks + cc.durationFlicks).toBeLessThanOrEqual(cc.sourceDurationFlicks)
+  })
+
+  it('no-ops when the flag already has the requested value', () => {
+    const s = seq([clip('a', 10)], [audioConnected('cc', 'a', 0, 5)])
+    expect(setConnectedLoop(s, { clipId: 'cc', loop: false }).next).toBe(s)
+    const looped = setConnectedLoop(s, { clipId: 'cc', loop: true }).next
+    expect(setConnectedLoop(looped, { clipId: 'cc', loop: true }).next).toBe(looped)
+  })
+
+  it('rejects unknown ids, spine ids, and titles', () => {
+    const s = seq([clip('a', 10)], [{ ...connected('t', 'a', 0, 4), titleData: { ...TITLE } }])
+    expect(setConnectedLoop(s, { clipId: 'zzz', loop: true }).error?.code).toBe('unknown-id')
+    expect(setConnectedLoop(s, { clipId: 'a', loop: true }).error?.code).toBe('unknown-id')
+    expect(setConnectedLoop(s, { clipId: 't', loop: true }).error?.code).toBe('invalid-target')
   })
 })
 

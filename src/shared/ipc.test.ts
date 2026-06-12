@@ -79,3 +79,57 @@ describe('sequenceSchema captions round-trip', () => {
     expect(result.success).toBe(false)
   })
 })
+
+/** Same z.object-strips-keys trap for connected-clip fields: pin `loop`. */
+describe('sequenceSchema connected-clip loop round-trip', () => {
+  const base: Sequence = {
+    id: 's1',
+    fps: { num: 30, den: 1 },
+    spine: [
+      {
+        kind: 'clip',
+        id: 'a',
+        assetId: 'asset-a',
+        mediaInFlicks: 0,
+        durationFlicks: 235_200_000,
+        sourceDurationFlicks: 235_200_000
+      }
+    ],
+    connected: []
+  }
+  const connected = {
+    id: 'cc',
+    assetId: 'asset-cc',
+    parentClipId: 'a',
+    offsetFlicks: 0,
+    lane: -1,
+    mediaInFlicks: 0,
+    durationFlicks: 235_200_000,
+    sourceDurationFlicks: 23_520_000
+  }
+
+  it('preserves loop: true through parse (saveSequence path)', () => {
+    const sequence: Sequence = { ...base, connected: [{ ...connected, loop: true }] }
+    const parsed = saveSequencePayloadSchema.parse({ projectId: 'p1', sequence })
+    expect(parsed.sequence).toEqual(sequence)
+    expect(parsed.sequence.connected[0].loop).toBe(true)
+  })
+
+  it('keeps loop optional: clips without the flag still parse unchanged', () => {
+    const sequence: Sequence = {
+      ...base,
+      connected: [{ ...connected, durationFlicks: 23_520_000 }]
+    }
+    const parsed = sequenceSchema.parse(sequence)
+    expect(parsed.connected[0].loop).toBeUndefined()
+    expect(parsed).toEqual(sequence)
+  })
+
+  it('rejects a non-boolean loop instead of corrupting the project', () => {
+    const result = sequenceSchema.safeParse({
+      ...base,
+      connected: [{ ...connected, loop: 'yes' }]
+    })
+    expect(result.success).toBe(false)
+  })
+})

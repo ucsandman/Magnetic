@@ -53,6 +53,9 @@ export function clipWindows(sequence: Sequence): ClipWindow[] {
   const startOf = spineStartIndex(sequence.spine)
   for (const cc of sequence.connected) {
     if (cc.titleData !== undefined) continue
+    // looped clips are music beds, not speech — their wrapped media math would
+    // corrupt the linear mediaIn→sequence mapping every projection relies on
+    if (cc.loop === true) continue
     const parentStart = startOf.get(cc.parentClipId)
     if (parentStart === undefined) continue
     windows.push({

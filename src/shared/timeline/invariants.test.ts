@@ -16,6 +16,7 @@ import {
   rippleDelete,
   rippleDeleteRange,
   roll,
+  setConnectedLoop,
   slip,
   trimConnected,
   trimRipple,
@@ -60,6 +61,7 @@ type Cmd =
       deltaFrames: number
       jitter: number
     }
+  | { op: 'setConnectedLoop'; pick: number; loop: boolean }
 
 const durFrames = fc.integer({ min: 1, max: 50 })
 const mediaInFrames = fc.integer({ min: 0, max: 580 })
@@ -102,7 +104,8 @@ const cmdArb: fc.Arbitrary<Cmd> = fc.oneof(
     edge: fc.constantFrom('head' as const, 'tail' as const),
     deltaFrames,
     jitter: deltaJitter
-  })
+  }),
+  fc.record({ op: fc.constant('setConnectedLoop' as const), pick, loop: fc.boolean() })
 )
 
 const initialArb: fc.Arbitrary<Sequence> = fc
@@ -244,6 +247,8 @@ function applyCommand(seq: Sequence, cmd: Cmd, step: number): OpResult {
         edge: cmd.edge,
         deltaFlicks: cmd.deltaFrames * F + cmd.jitter
       })
+    case 'setConnectedLoop':
+      return setConnectedLoop(seq, { clipId: pickConnectedId(seq, cmd.pick), loop: cmd.loop })
   }
 }
 
@@ -270,10 +275,13 @@ function checkInvariants(seq: Sequence): void {
   for (const cc of seq.connected) {
     expect(cc.durationFlicks, `duration of connected ${cc.id}`).toBeGreaterThanOrEqual(minFlicks)
     expect(cc.mediaInFlicks, `mediaIn of connected ${cc.id}`).toBeGreaterThanOrEqual(0)
-    expect(
-      cc.mediaInFlicks + cc.durationFlicks,
-      `media bounds of connected ${cc.id}`
-    ).toBeLessThanOrEqual(cc.sourceDurationFlicks)
+    // looped clips tile their media, so the duration is unbounded by the source
+    if (cc.loop !== true) {
+      expect(
+        cc.mediaInFlicks + cc.durationFlicks,
+        `media bounds of connected ${cc.id}`
+      ).toBeLessThanOrEqual(cc.sourceDurationFlicks)
+    }
     expect(spineIds.has(cc.parentClipId), `parent of ${cc.id} exists`).toBe(true)
     const start = connectedStartOf(seq, cc.id)!
     const end = start + cc.durationFlicks

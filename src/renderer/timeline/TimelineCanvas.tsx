@@ -653,6 +653,14 @@ export function TimelineCanvas(): ReactNode {
       spineItem.kind === 'clip' &&
       spineItem.audioDisabled !== true &&
       snapshotRef.current?.assets[spineItem.assetId]?.audio !== undefined
+    // loop-to-fill targets connected AUDIO clips (music beds), never titles
+    const connectedClip = state.sequence.connected.find((cc) => cc.id === clipId)
+    const canLoop =
+      connectedClip !== undefined &&
+      connectedClip.titleData === undefined &&
+      connectedClip.audioDisabled !== true &&
+      snapshotRef.current?.assets[connectedClip.assetId]?.audio !== undefined
+    const isLooped = connectedClip?.loop === true
     const frame = flicksPerFrame(state.sequence.fps)
     const bladeTime = Math.round(xToTime(state, x) / frame) * frame
     store.selectClip(clipId, false)
@@ -671,6 +679,13 @@ export function TimelineCanvas(): ReactNode {
           label: 'Detach Audio',
           disabled: !canDetachAudio,
           onSelect: () => store.detachAudio(clipId)
+        },
+        {
+          id: 'loop',
+          label: isLooped ? 'Unloop' : 'Loop to End of Spine',
+          disabled: !canLoop,
+          onSelect: () =>
+            isLooped ? store.unloopConnected(clipId) : store.loopConnectedToSpineEnd(clipId)
         },
         {
           id: 'copy',

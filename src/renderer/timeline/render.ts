@@ -32,6 +32,8 @@ export interface ClipRect {
   mediaInFlicks: number
   durationFlicks: number
   isGap: boolean
+  /** Source duration of a LOOPED connected clip — drives the seam tick marks. */
+  loopSourceFlicks?: number
 }
 
 export interface DragGhost {
@@ -352,7 +354,7 @@ export function computeClipRects(state: RenderState): ClipRect[] {
     const x = timeToX(state, start)
     const w = (cc.durationFlicks / FLICKS_PER_SECOND) * state.zoomPxPerSec
     if (x + w < 0 || x > state.width) continue
-    rects.push({
+    const rect: ClipRect = {
       id: cc.id,
       kind: 'connected',
       x,
@@ -364,7 +366,9 @@ export function computeClipRects(state: RenderState): ClipRect[] {
       mediaInFlicks: cc.mediaInFlicks,
       durationFlicks: cc.durationFlicks,
       isGap: false
-    })
+    }
+    if (cc.loop === true) rect.loopSourceFlicks = cc.sourceDurationFlicks
+    rects.push(rect)
   }
   return rects
 }
@@ -445,6 +449,36 @@ function drawKeyframeDiamonds(
   }
 }
 
+/** Clips narrower than this skip loop seam ticks (same guard as keyframes). */
+const LOOP_TICK_MIN_CLIP_PX = 20
+const LOOP_TICK_H = 6
+
+/**
+ * Small tick at every loop seam of a looped clip: the media wraps where one
+ * source iteration ends and the next begins (first seam at source − mediaIn,
+ * then every source length — mirrors pushLoopIterations in audio-graph.ts).
+ */
+function drawLoopSeams(ctx: CanvasRenderingContext2D, state: RenderState, rects: ClipRect[]): void {
+  ctx.strokeStyle = COLORS.clipText
+  ctx.lineWidth = 1
+  for (const rect of rects) {
+    const source = rect.loopSourceFlicks
+    if (source === undefined || source <= 0 || rect.w < LOOP_TICK_MIN_CLIP_PX) continue
+    // zoomed far out the seams would smear into noise (and cost thousands of
+    // strokes on an hours-long bed) — skip below 3px of spacing
+    if ((source / FLICKS_PER_SECOND) * state.zoomPxPerSec < 3) continue
+    const firstSeam = source - (rect.mediaInFlicks % source)
+    for (let seam = firstSeam; seam < rect.durationFlicks; seam += source) {
+      const x = Math.round(rect.x + (seam / FLICKS_PER_SECOND) * state.zoomPxPerSec) + 0.5
+      if (x <= rect.x + 1 || x >= rect.x + rect.w - 1) continue
+      ctx.beginPath()
+      ctx.moveTo(x, rect.y + 1)
+      ctx.lineTo(x, rect.y + 1 + LOOP_TICK_H)
+      ctx.stroke()
+    }
+  }
+}
+
 const KIND_LABEL: Record<string, string> = {
   dissolve: 'X',
   wipeL: 'W◀',
@@ -519,6 +553,8 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
   }
 
   drawKeyframeDiamonds(ctx, state, rects)
+
+  drawLoopSeams(ctx, state, rects)
 
   drawTransitionBadges(ctx, state)
 

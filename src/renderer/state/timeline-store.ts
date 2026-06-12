@@ -24,6 +24,7 @@ import {
   DEFAULT_FX,
   detachAudio,
   setCaptionSettings,
+  setConnectedLoop,
   insertAt,
   liftDelete,
   move,
@@ -139,6 +140,10 @@ interface TimelineStore {
   detachAudio(clipId: string): void
   /** Trim a connected clip's edge independently of its parent (J/L cuts). */
   trimConnectedClip(clipId: string, edge: 'head' | 'tail', deltaFlicks: number): void
+  /** Loop a connected audio clip and stretch it to the spine end (ONE undo step). */
+  loopConnectedToSpineEnd(clipId: string): void
+  /** Clear the loop flag; the duration clamps back into the source (one op). */
+  unloopConnected(clipId: string): void
   appendSource(src: SourceClip): void
   insertSourceAtPlayhead(src: SourceClip): void
   overwriteSourceAtPlayhead(src: SourceClip): void
@@ -400,6 +405,26 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 
     trimConnectedClip(clipId, edge, deltaFlicks) {
       apply((seq) => trimConnected(seq, { clipId, edge, deltaFlicks }))
+    },
+
+    loopConnectedToSpineEnd(clipId) {
+      const { sequence } = get()
+      if (stack === null || sequence === null) return
+      const cc = sequence.connected.find((candidate) => candidate.id === clipId)
+      const startFlicks = connectedStartOf(sequence, clipId)
+      if (cc === undefined || startFlicks === null) return
+      const targetFlicks = sequenceDuration(sequence) - startFlicks
+      stack.beginGroup()
+      stack.apply((seq) => setConnectedLoop(seq, { clipId, loop: true }))
+      stack.apply((seq) =>
+        trimConnected(seq, { clipId, edge: 'tail', deltaFlicks: targetFlicks - cc.durationFlicks })
+      )
+      stack.endGroup()
+      syncFromStack()
+    },
+
+    unloopConnected(clipId) {
+      apply((seq) => setConnectedLoop(seq, { clipId, loop: false }))
     },
 
     async load() {
@@ -673,6 +698,10 @@ export function installTimelineTestHooks(): void {
     },
     measureDraws: (n: number) => measureDraws(n),
     applyRandomOps,
+    /** Set a clip's fx directly (smart-render E2E: flip eligibility off). */
+    setClipFx(clipId: string, fx: ClipFx) {
+      useTimelineStore.getState().setFx(clipId, fx)
+    },
     playback: {
       readPixels: (x: number, y: number, w: number, h: number) =>
         playbackEngine.readPixels(x, y, w, h),

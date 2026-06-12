@@ -215,9 +215,20 @@ function enqueueDerivativeJobs(asset: MediaAsset): void {
   }
 }
 
+/** Whisper on multi-hour recordings costs hours of CPU — auto-transcribe only short clips. */
+const AUTO_TRANSCRIBE_MAX_MINUTES = 30
+const AUTO_TRANSCRIBE_MAX_FLICKS = AUTO_TRANSCRIBE_MAX_MINUTES * 60 * 705_600_000
+
 function enqueueAssetJobs(asset: MediaAsset): void {
   enqueueDerivativeJobs(asset)
-  if (asset.audio !== undefined && getAutoTranscribe()) enqueueTranscription(asset.id)
+  if (asset.audio === undefined || !getAutoTranscribe()) return
+  if (asset.durationFlicks > AUTO_TRANSCRIBE_MAX_FLICKS) {
+    console.log(
+      `auto-transcribe skipped for ${asset.fileName}: longer than ${AUTO_TRANSCRIBE_MAX_MINUTES} min — use the asset's Transcribe action to run it manually`
+    )
+    return
+  }
+  enqueueTranscription(asset.id)
 }
 
 /** Import files, then kick off background filmstrip/waveform generation. */

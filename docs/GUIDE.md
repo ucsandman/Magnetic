@@ -198,6 +198,16 @@ For platforms that want caption files instead of burned-in text, the Captions ta
 - **Presets**: 1080p, 720p, or source resolution — H.264/AAC MP4, plays everywhere.
 - Progress is shown frame-by-frame and **Cancel** is safe: no partial file is ever left at the destination (the file only appears once the export completes).
 - Export is WYSIWYG — transitions, titles, color, transforms, fades, and the audio mix render exactly as the preview showed, because it's the same compositor.
+- **Smart render**: when the video track is one asset, possibly trimmed but visually untouched, the dialog shows *Smart render — video passthrough* and copies the original H.264 bitstream instead of re-encoding it — a multi-hour VOD exports at roughly disk speed, and only the audio mix is rendered. Conditions: a single source clip (blade cuts that were never moved still count), no gaps, transitions, titles, or connected video, captions off, and every video/color adjustment at its default with no keyframes. Volume, fades, pan, detached audio, and connected music clips are fine — audio is always freshly mixed. The 720p preset needs scaling, so it always re-encodes. One caveat: the cut-in snaps to the nearest preceding keyframe of the source, so the export can start up to one GOP (typically ≤ a few seconds) before your exact in-point.
+
+### Long recordings
+
+Multi-hour captures (OBS sessions, podcasts, VODs) are a supported workload:
+
+- **What scales**: preview video and audio stream in windows — a 6-hour clip plays without loading it into memory — and an untouched video track exports via smart render at disk speed instead of re-encoding every frame.
+- **Music bed**: right-click a connected audio clip → **Loop to End of Spine** and it tiles its media to cover the whole timeline (a small tick marks each loop seam); fades apply across the whole bed, and **Unloop** trims it back into its source. Looped clips never appear in the transcript or silence panels — they're music, not speech.
+- **Transcription**: clips longer than **30 minutes are skipped by auto-transcribe** (Whisper on a 6-hour file costs hours of CPU). Transcribe one manually whenever you want it: right-click the asset in the browser → **Transcribe**.
+- **Disk note**: playback and export read audio from a PCM cache inside the library (`cache/`), about **700 MB per hour** of source audio. It's created on first play and safe to delete when a project wraps.
 
 ---
 
