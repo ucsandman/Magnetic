@@ -51,10 +51,16 @@ export interface CopilotTurnRequest {
   signal?: AbortSignal
 }
 
+export interface CopilotOpEntry {
+  name: string
+  input: unknown
+  summary: string
+}
+
 export interface CopilotTurnResult {
   reply: string
-  /** Plain-English change list — one entry per successful, change-producing call. */
-  changes: string[]
+  /** One entry per successful, change-producing call — replayable for partial accept. */
+  ops: CopilotOpEntry[]
   /** Scratch after the turn; === base when nothing changed. */
   proposed: Sequence
 }
@@ -93,11 +99,13 @@ async function streamFakeTurn(
   const reply = typeof result === 'string' ? result : result.reply
   const toolCalls = typeof result === 'string' ? [] : (result.toolCalls ?? [])
   let scratch = request.base
-  const changes: string[] = []
+  const ops: CopilotOpEntry[] = []
   for (const call of toolCalls) {
     const outcome = executeEditTool(scratch, call.name, call.input)
     scratch = outcome.next
-    if (outcome.summary !== null) changes.push(outcome.summary)
+    if (outcome.summary !== null) {
+      ops.push({ name: call.name, input: call.input, summary: outcome.summary })
+    }
     if (outcome.timeRefFlicks !== null) request.onToolTime?.(outcome.timeRefFlicks)
   }
   // stream in a few chunks so the UI's streaming path is actually exercised
@@ -106,7 +114,7 @@ async function streamFakeTurn(
     request.onDelta(reply.slice(i, i + step))
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
-  return { reply, changes, proposed: scratch }
+  return { reply, ops, proposed: scratch }
 }
 
 /**
@@ -136,7 +144,7 @@ export async function streamCopilotTurn(request: CopilotTurnRequest): Promise<Co
   const tools: Anthropic.Tool[] = [...EDIT_TOOLS, READ_TIMELINE_TOOL]
 
   let scratch = request.base
-  const changes: string[] = []
+  const ops: CopilotOpEntry[] = []
   const replyParts: string[] = []
 
   for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
@@ -167,7 +175,7 @@ export async function streamCopilotTurn(request: CopilotTurnRequest): Promise<Co
       (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
     )
     if (message.stop_reason !== 'tool_use' || toolUses.length === 0) {
-      return { reply: replyParts.join(''), changes, proposed: scratch }
+      return { reply: replyParts.join(''), ops, proposed: scratch }
     }
 
     messages.push({ role: 'assistant', content: message.content })
@@ -183,7 +191,9 @@ export async function streamCopilotTurn(request: CopilotTurnRequest): Promise<Co
       }
       const outcome = executeEditTool(scratch, toolUse.name, toolUse.input)
       scratch = outcome.next
-      if (outcome.summary !== null) changes.push(outcome.summary)
+      if (outcome.summary !== null) {
+        ops.push({ name: toolUse.name, input: toolUse.input, summary: outcome.summary })
+      }
       if (outcome.timeRefFlicks !== null) request.onToolTime?.(outcome.timeRefFlicks)
       results.push({
         type: 'tool_result',
@@ -198,7 +208,7 @@ export async function streamCopilotTurn(request: CopilotTurnRequest): Promise<Co
   request.onDelta('\n\n[stopped: tool-iteration cap reached — review what was proposed so far]')
   return {
     reply: replyParts.join('') + '\n[stopped at the tool-iteration cap]',
-    changes,
+    ops,
     proposed: scratch
   }
 }

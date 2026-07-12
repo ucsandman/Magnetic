@@ -52,14 +52,25 @@ const AUDIO_FIELDS: FieldDef[] = [
   { key: 'pan', label: 'Pan', step: 0.1 }
 ]
 
+/** "2 min ago" style stamp for the session-only AI attribution line. */
+function relativeTime(atMs: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - atMs) / 1000))
+  if (seconds < 60) return 'just now'
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} min ago`
+  return `${Math.round(minutes / 60)} h ago`
+}
+
 /** Inspector: Video / Color / Audio (+ Title for titles), bound to selection. */
 export function InspectorPanel(): ReactNode {
   const selection = useTimelineStore((state) => state.selection)
   const sequence = useTimelineStore((state) => state.sequence)
   const playheadFlicks = useTimelineStore((state) => state.playheadFlicks)
+  const attributions = useTimelineStore((state) => state.attributions)
   const [tab, setTab] = useState<Tab>('video')
 
   const selectedId = selection.clipIds.length === 1 ? selection.clipIds[0] : null
+  const attribution = selectedId === null ? undefined : attributions.get(selectedId)
   const spineClip =
     selectedId === null || sequence === null
       ? undefined
@@ -237,6 +248,12 @@ export function InspectorPanel(): ReactNode {
       }
     >
       <div className="inspector-video">
+        {attribution !== undefined && (
+          <div className="inspector-attribution" data-testid="inspector-attribution">
+            <span className="roughcut-ai-badge">AI</span> Edited by {attribution.actor} ·{' '}
+            {relativeTime(attribution.atMs)}
+          </div>
+        )}
         {activeTab === 'video' && (
           <>
             <div className="inspector-section">Video — Transform</div>

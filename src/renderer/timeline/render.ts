@@ -80,6 +80,8 @@ export interface RenderState {
   } | null
   /** Where the copilot last touched the timeline (marker in the ruler). */
   agentPlayheadFlicks: number | null
+  /** Clips an accepted AI pass touched this session (corner provenance dot). */
+  attributedClipIds: ReadonlySet<string> | null
   playheadFlicks: number
   zoomPxPerSec: number
   scrollX: number
@@ -569,6 +571,17 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
   drawKeyframeDiamonds(ctx, state, rects)
 
   drawLoopSeams(ctx, state, rects)
+
+  // session provenance: a small dot on every clip an accepted AI pass touched
+  if (state.attributedClipIds !== null && state.attributedClipIds.size > 0) {
+    ctx.fillStyle = '#0a84ff'
+    for (const rect of rects) {
+      if (!state.attributedClipIds.has(rect.id)) continue
+      ctx.beginPath()
+      ctx.arc(rect.x + rect.w - 7, rect.y + 7, 3, 0, Math.PI * 2)
+      ctx.fill()
+    }
+  }
 
   drawTransitionBadges(ctx, state)
 

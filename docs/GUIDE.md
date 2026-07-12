@@ -197,8 +197,10 @@ The **Copilot** tab is an editing partner: it sees the open sequence (clips and 
 
 1. First open asks for your Anthropic API key (get one at console.anthropic.com). It's stored in the app's settings on this machine, sent only to api.anthropic.com, and never logged. Change it later with the **Key…** button.
 2. Ask ("where does it drag?") or instruct ("tighten this — cut the pauses and smooth the jumps"). Answers stream in with m:ss.s timecodes; while it works, a purple agent playhead marks where it's cutting.
-3. When a turn makes edits, a **proposal card** lists every change in plain English, and the timeline shows the same ghost preview as Rough Cut: red hatch over what would go, a green strip showing the result. Your sequence has not changed yet — keep editing if you like (that voids the proposal).
-4. **Accept** commits the whole batch as ONE undo step (`Ctrl+Z` takes it all back); **Discard** drops it without a trace. Sending a new instruction supersedes an unreviewed proposal.
+3. When a turn makes edits, a **proposal card** lists every change with its own checkbox, and the timeline shows the same ghost preview as Rough Cut: red hatch over what would go, a green strip showing the result. Your sequence has not changed yet — keep editing if you like (that voids the proposal).
+4. Scrub the **before/after** panes in the card — real frames from the playback engine, kept on the same moment of content on both sides (pause playback to see them).
+5. Untick any change you don't want and **Accept** the rest — changes that depend on each other are linked into one decision (position-addressed edits after cuts, or edits to clips a cut created), and the card says so. The kept changes replay transactionally: if they can't stand alone, nothing applies and the proposal stays open. **Accept** still commits as ONE undo step; **Discard** drops everything without a trace.
+6. Every clip an accepted AI pass touched gets a small blue dot and an **"Edited by Copilot/Rough Cut · N min ago"** line in the Inspector when selected — session-only provenance, never saved into your project.
 
 Under the hood the copilot uses the same edit operations as your keyboard — blade, ripple delete, trim, roll, slip, move, transitions — each validated against the timeline's invariants before it can even be proposed. There is no export tool: only you can ship. If transcription hasn't finished, it will say so rather than guess.
 

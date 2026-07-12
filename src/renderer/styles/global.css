@@ -1449,6 +1449,61 @@ select,
   gap: 8px;
 }
 
+.copilot-group-linked {
+  color: var(--color-text-dim);
+  font-style: italic;
+}
+
+.ab-review {
+  margin: 8px 0;
+}
+
+.ab-review-panes {
+  display: flex;
+  gap: 6px;
+}
+
+.ab-review-panes figure {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.ab-review-panes canvas {
+  width: 100%;
+  height: auto;
+  background: #000;
+  border-radius: 4px;
+}
+
+.ab-review-panes figcaption {
+  font-size: var(--font-size-small);
+  color: var(--color-text-dim);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ab-review input[type='range'] {
+  width: 100%;
+}
+
+.ab-review-blocked {
+  font-size: var(--font-size-small);
+  color: var(--color-text-dim);
+}
+
+.inspector-attribution {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  border: 1px solid #0a84ff55;
+  border-radius: 4px;
+  font-size: var(--font-size-small);
+  color: var(--color-text-dim);
+}
+
 .copilot-input-row input {
   flex: 1;
   min-width: 0;

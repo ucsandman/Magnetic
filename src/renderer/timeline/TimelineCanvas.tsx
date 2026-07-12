@@ -98,7 +98,8 @@ export function TimelineCanvas(): ReactNode {
       silenceRanges,
       roughCut,
       pendingProposal,
-      agentPlayheadFlicks
+      agentPlayheadFlicks,
+      attributions
     } = useTimelineStore.getState()
     const canvas = canvasRef.current
     if (sequence === null || canvas === null) return null
@@ -127,6 +128,7 @@ export function TimelineCanvas(): ReactNode {
       silenceRanges,
       proposal,
       agentPlayheadFlicks,
+      attributedClipIds: attributions.size > 0 ? new Set(attributions.keys()) : null,
       // badges only while the rough cut is still the sequence's top of history
       roughCutCuts:
         roughCut !== null && roughCut.resultSequence === sequence ? roughCut.cuts : null,

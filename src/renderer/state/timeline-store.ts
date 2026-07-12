@@ -58,6 +58,7 @@ import {
   toggleInSelection,
   type Selection
 } from '../../shared/timeline/select'
+import { touchedClipIds } from '../../shared/timeline/diff'
 import { UndoStack, type Op } from '../../shared/timeline/undo'
 import { validateSequence } from '../../shared/timeline/validate'
 import {
@@ -66,6 +67,7 @@ import {
   type RoughCutPoint,
   type RoughCutRange
 } from '../agent/roughcut'
+import { executeEditTool } from '../copilot/tools'
 import { playbackEngine } from '../playback/engine'
 import { loadLoopPref, saveLoopPref } from '../playback/loop'
 import { measureDraws } from '../timeline/perf'
@@ -165,6 +167,8 @@ interface TimelineStore {
     ranges: RoughCutRange[] | null
     /** Plain-English change list (copilot batches). */
     changes: string[]
+    /** Replayable op log (copilot batches) — enables partial accept. */
+    ops: { name: string; input: unknown; summary: string }[] | null
     label: 'Rough Cut' | 'Copilot'
   } | null
   /**
@@ -178,14 +182,28 @@ interface TimelineStore {
    * pending proposal. Same gates: validated, non-empty, computed against the
    * CURRENT sequence.
    */
-  proposeCopilotChanges(proposedSequence: Sequence, changes: string[]): boolean
+  proposeCopilotChanges(
+    proposedSequence: Sequence,
+    ops: { name: string; input: unknown; summary: string }[]
+  ): boolean
   /** Commit the pending proposal through the undo stack as ONE group. */
   acceptProposal(): void
+  /**
+   * Partial accept: replay only the ops at `indices` (original order) against
+   * the base — transactionally: any failed op or invariant violation aborts
+   * the whole accept and keeps the proposal pending. Returns success.
+   */
+  acceptCopilotOps(indices: number[]): boolean
   /** Drop the pending proposal. Zero history entries by construction. */
   discardProposal(): void
   /** Where the copilot last touched the timeline (ruler marker); ephemeral. */
   agentPlayheadFlicks: number | null
   setAgentPlayhead(flicks: number | null): void
+  /**
+   * Session-only provenance: clips whose content an accepted AI pass changed
+   * (clip dot + Inspector line). Never persisted into the project.
+   */
+  attributions: ReadonlyMap<string, { actor: 'Copilot' | 'Rough Cut'; atMs: number }>
   /**
    * Ripple-delete a rough-cut plan (ascending, non-overlapping — what
    * planRoughCut returns) as ONE undo step, remembering provenance.
@@ -312,6 +330,18 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
     const result = stack.apply(op)
     syncFromStack()
     return result
+  }
+
+  /** Stamp session-only provenance on every clip an accepted AI pass touched. */
+  function recordAttribution(base: Sequence, next: Sequence, actor: 'Copilot' | 'Rough Cut'): void {
+    const touched = touchedClipIds(base, next)
+    if (touched.size === 0) return
+    set((state) => {
+      const attributions = new Map(state.attributions)
+      const atMs = Date.now()
+      for (const id of touched) attributions.set(id, { actor, atMs })
+      return { attributions }
+    })
   }
 
   /** Replay a clipboard payload at `atFlicks` through kernel ops as ONE undo step. */
@@ -622,13 +652,14 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
           proposedSequence: proposed,
           ranges,
           changes: [],
+          ops: null,
           label: 'Rough Cut'
         }
       })
       return true
     },
 
-    proposeCopilotChanges(proposedSequence, changes) {
+    proposeCopilotChanges(proposedSequence, ops) {
       const { sequence } = get()
       if (sequence === null || proposedSequence === sequence) return false
       const violations = validateSequence(proposedSequence)
@@ -643,10 +674,52 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
           baseSequence: sequence,
           proposedSequence,
           ranges: null,
-          changes,
+          changes: ops.map((op) => op.summary),
+          ops,
           label: 'Copilot'
         }
       })
+      return true
+    },
+
+    acceptCopilotOps(indices) {
+      const { sequence, pendingProposal } = get()
+      if (stack === null || pendingProposal === null || pendingProposal.ops === null) return false
+      if (sequence === null || sequence !== pendingProposal.baseSequence) {
+        set({ pendingProposal: null })
+        return false
+      }
+      const keep = new Set(indices)
+      const ops = pendingProposal.ops.filter((_, index) => keep.has(index))
+      if (ops.length === pendingProposal.ops.length) {
+        get().acceptProposal()
+        return true
+      }
+      if (ops.length === 0) {
+        set({ pendingProposal: null })
+        return true
+      }
+      // Transactional replay: the kept ops re-execute in original order; any
+      // failure (or invariant violation) aborts and leaves the proposal
+      // pending so the human can pick a different subset.
+      let scratch: Sequence = sequence
+      for (const op of ops) {
+        const outcome = executeEditTool(scratch, op.name, op.input)
+        if (!outcome.ok) {
+          console.warn(`partial accept aborted at "${op.summary}" — ${outcome.resultText}`)
+          return false
+        }
+        scratch = outcome.next
+      }
+      if (validateSequence(scratch).length > 0) return false
+      set({ pendingProposal: null })
+      if (scratch === sequence) return true
+      stack.apply((seq) => ({
+        next: scratch,
+        inverse: { type: 'restore', sequence: seq }
+      }))
+      syncFromStack()
+      recordAttribution(sequence, scratch, 'Copilot')
       return true
     },
 
@@ -669,6 +742,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
         inverse: { type: 'restore', sequence: seq }
       }))
       syncFromStack()
+      recordAttribution(pendingProposal.baseSequence, pendingProposal.proposedSequence, 'Copilot')
     },
 
     discardProposal() {
@@ -680,6 +754,8 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
     setAgentPlayhead(agentPlayheadFlicks) {
       set({ agentPlayheadFlicks })
     },
+
+    attributions: new Map(),
 
     roughCut: null,
 
@@ -697,6 +773,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
       // Nothing actually deleted → no history entry to attribute or reject.
       if (resultSequence === baseSequence) return
       set({ roughCut: { baseSequence, resultSequence, ranges, cuts: cutPointsFor(ranges) } })
+      recordAttribution(baseSequence, resultSequence, 'Rough Cut')
     },
 
     rejectRoughCutCut(index) {
@@ -879,7 +956,8 @@ export function installTimelineTestHooks(): void {
       clipboard,
       silenceRanges,
       roughCut,
-      pendingProposal
+      pendingProposal,
+      attributions
     } = useTimelineStore.getState()
     return {
       sequence,
@@ -894,7 +972,8 @@ export function installTimelineTestHooks(): void {
       roughCutCuts: roughCut?.cuts ?? null,
       proposalRanges: pendingProposal?.ranges ?? null,
       proposalChanges: pendingProposal?.changes ?? null,
-      proposalLabel: pendingProposal?.label ?? null
+      proposalLabel: pendingProposal?.label ?? null,
+      attributions: [...attributions.entries()]
     }
   }
   testWindow.__magneticTimeline = {

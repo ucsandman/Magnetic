@@ -20,6 +20,50 @@ export interface TimeRange {
 
 const rootOf = (id: string): string => id.split(':')[0]
 
+/**
+ * Map a BASE-sequence time into the PROPOSED sequence across the deletions:
+ * earlier removals shift it left; a time inside a removal clamps to the cut.
+ * Keeps the A/B review's two stills on the same moment of content.
+ */
+export function proposedTimeAt(deletions: readonly TimeRange[], baseFlicks: number): number {
+  let removed = 0
+  for (const deletion of deletions) {
+    removed += Math.min(
+      Math.max(0, baseFlicks - deletion.fromFlicks),
+      deletion.toFlicks - deletion.fromFlicks
+    )
+  }
+  return baseFlicks - removed
+}
+
+/**
+ * Proposed spine clips whose CONTENT differs from the base — trimmed media
+ * windows, changed durations, or blade-derived ids. Pure moves report
+ * nothing. Feeds the per-clip attribution tags after an accepted pass.
+ */
+export function touchedClipIds(base: Sequence, proposed: Sequence): Set<string> {
+  if (base === proposed) return new Set()
+  const baseById = new Map(
+    base.spine.filter((item) => item.kind === 'clip').map((item) => [item.id, item])
+  )
+  const touched = new Set<string>()
+  for (const item of proposed.spine) {
+    if (item.kind !== 'clip') continue
+    const before = baseById.get(item.id)
+    if (before === undefined) {
+      touched.add(item.id)
+      continue
+    }
+    if (
+      before.kind === 'clip' &&
+      (before.mediaInFlicks !== item.mediaInFlicks || before.durationFlicks !== item.durationFlicks)
+    ) {
+      touched.add(item.id)
+    }
+  }
+  return touched
+}
+
 export function diffDeletions(base: Sequence, proposed: Sequence): TimeRange[] {
   if (base === proposed) return []
 

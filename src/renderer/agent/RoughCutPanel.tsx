@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import type { Transcript } from '../../shared/types'
+import { ABReview } from '../copilot/ABReview'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 import { useAssetEnvelopes } from '../silence/use-envelopes'
@@ -261,6 +262,13 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
               </div>
             ))}
           </div>
+          {snapshot !== null && pendingProposal !== null && (
+            <ABReview
+              base={pendingProposal.baseSequence}
+              proposed={pendingProposal.proposedSequence}
+              snapshot={snapshot}
+            />
+          )}
           <div className="silence-actions">
             <button
               type="button"

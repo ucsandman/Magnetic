@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { create } from 'zustand'
 import type { Transcript } from '../../shared/types'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 import { useAssetEnvelopes } from '../silence/use-envelopes'
 import { ensureTranscripts } from '../transcript/cache'
+import { ABReview } from './ABReview'
 import { advisorErrorMessage, streamCopilotTurn, type AdvisorTurn } from './agent-runtime'
 import { buildCopilotContext } from './context'
+import { dependencyGroups } from './dependency'
 
 /**
  * Read-only copilot advisor (phase 3): a chat over the open sequence. The
@@ -88,6 +90,48 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
     }
   }, [pendingProposal, copilotProposal])
 
+  // Partial accept: ops fall into forced decision groups (id-introduction +
+  // conservative position-addressing rules — see dependency.ts). One checkbox
+  // per group; all checked by default, reset whenever the proposal changes.
+  const groups = useMemo(
+    () =>
+      copilotProposal !== null && copilotProposal.ops !== null
+        ? dependencyGroups(copilotProposal.baseSequence, copilotProposal.ops)
+        : [],
+    [copilotProposal]
+  )
+  // checkbox state resets whenever the proposal object changes — adjusted
+  // during render (React's derived-state pattern), not in an effect
+  const [checkboxes, setCheckboxes] = useState<{
+    proposal: typeof copilotProposal
+    unchecked: Set<number>
+  }>({ proposal: null, unchecked: new Set() })
+  if (checkboxes.proposal !== copilotProposal) {
+    setCheckboxes({ proposal: copilotProposal, unchecked: new Set() })
+  }
+  const uncheckedGroups = checkboxes.unchecked
+  const setUncheckedGroups = (update: (current: Set<number>) => Set<number>): void =>
+    setCheckboxes((current) => ({ ...current, unchecked: update(current.unchecked) }))
+  const keptIndices = useMemo(
+    () => groups.filter((_, groupIndex) => !uncheckedGroups.has(groupIndex)).flat(),
+    [groups, uncheckedGroups]
+  )
+
+  const acceptSelected = (): void => {
+    const store = useTimelineStore.getState()
+    if (uncheckedGroups.size === 0) {
+      store.acceptProposal()
+      return
+    }
+    if (!store.acceptCopilotOps(keptIndices)) {
+      useCopilotChat
+        .getState()
+        .setError(
+          'Partial accept failed — those changes could not replay on their own. Try a different selection or accept everything.'
+        )
+    }
+  }
+
   const saveKey = (): void => {
     const trimmed = keyDraft.trim()
     if (trimmed === '') return
@@ -137,8 +181,8 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
       .then((result) => {
         const current = useCopilotChat.getState()
         current.setTurns([...current.turns, { role: 'assistant', text: result.reply }])
-        if (result.proposed !== sequence && result.changes.length > 0) {
-          useTimelineStore.getState().proposeCopilotChanges(result.proposed, result.changes)
+        if (result.proposed !== sequence && result.ops.length > 0) {
+          useTimelineStore.getState().proposeCopilotChanges(result.proposed, result.ops)
         }
       })
       .catch((failure: unknown) => {
@@ -240,20 +284,53 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
                 nothing applied yet. Accept commits as one undo step.
               </div>
               <ul className="copilot-proposal-list">
-                {copilotProposal.changes.map((change, index) => (
-                  <li key={index} data-testid={`copilot-change-${index}`}>
-                    {change}
+                {groups.map((group, groupIndex) => (
+                  <li key={groupIndex} className="copilot-proposal-group">
+                    <label>
+                      <input
+                        type="checkbox"
+                        data-testid={`copilot-group-${groupIndex}`}
+                        checked={!uncheckedGroups.has(groupIndex)}
+                        onChange={() =>
+                          setUncheckedGroups((current) => {
+                            const next = new Set(current)
+                            if (next.has(groupIndex)) next.delete(groupIndex)
+                            else next.add(groupIndex)
+                            return next
+                          })
+                        }
+                      />
+                      <span>
+                        {group.map((opIndex, position) => (
+                          <span key={opIndex} data-testid={`copilot-change-${opIndex}`}>
+                            {position > 0 ? ' + ' : ''}
+                            {copilotProposal.ops?.[opIndex]?.summary ?? ''}
+                          </span>
+                        ))}
+                        {group.length > 1 && (
+                          <em className="copilot-group-linked"> (linked — one decision)</em>
+                        )}
+                      </span>
+                    </label>
                   </li>
                 ))}
               </ul>
+              {snapshot !== null && (
+                <ABReview
+                  base={copilotProposal.baseSequence}
+                  proposed={copilotProposal.proposedSequence}
+                  snapshot={snapshot}
+                />
+              )}
               <div className="copilot-proposal-actions">
                 <button
                   type="button"
                   className="primary"
                   data-testid="copilot-accept"
-                  onClick={() => useTimelineStore.getState().acceptProposal()}
+                  disabled={keptIndices.length === 0}
+                  onClick={acceptSelected}
                 >
-                  Accept
+                  Accept{uncheckedGroups.size > 0 ? ` ${keptIndices.length} selected` : ''}
                 </button>
                 <button
                   type="button"

@@ -151,3 +151,133 @@ test('copilot advisor: key setup, perception context accuracy, streamed reply', 
 
   await app.close()
 })
+
+test('phase 5: partial accept, A/B frames, attribution', async () => {
+  test.setTimeout(300_000)
+  const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-copilot5-'))
+  // VIDEO fixture: testsrc2 has a moving clock, so frames at different times
+  // genuinely differ — the A/B panes must show real, distinct pixels.
+  const fixture = join(tempRoot, 'demo.mp4')
+  execFileSync(FFMPEG, [
+    '-v',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=size=320x240:rate=30:duration=10',
+    '-f',
+    'lavfi',
+    '-i',
+    "aevalsrc='if(lt(t,4),0.5*sin(880*2*PI*t),if(lt(t,6),0,0.5*sin(880*2*PI*t)))':s=8000:d=10",
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:a',
+    'aac',
+    '-shortest',
+    fixture
+  ])
+  const app = await launchApp(join(tempRoot, 'Copilot5.mglib'))
+  const page = await app.firstWindow()
+  await page.evaluate((paths) => window.api.__test!.importPaths(paths), [fixture])
+  await page.waitForFunction(() => {
+    const hooked = window as unknown as { __magneticState?: () => { sequence: unknown } }
+    return hooked.__magneticState !== undefined && hooked.__magneticState().sequence !== null
+  })
+  await page.getByTestId('asset-cell-demo.mp4').click()
+  await page.keyboard.press('e')
+
+  interface ProbeState {
+    sequence: { spine: { id: string; durationFlicks: number }[] }
+    attributions: [string, { actor: string; atMs: number }][]
+  }
+  const stateOf = (): Promise<ProbeState> =>
+    page.evaluate(() =>
+      (
+        window as unknown as {
+          __magneticState(): {
+            sequence: { spine: { id: string; durationFlicks: number }[] }
+            attributions: [string, { actor: string; atMs: number }][]
+          }
+        }
+      ).__magneticState()
+    )
+  const clipId = (await stateOf()).sequence.spine[0].id
+
+  await page.getByTestId('browser-tab-copilot').click()
+  await page.getByTestId('copilot-key-input').fill('sk-ant-test-key-not-real')
+  await page.getByTestId('copilot-key-save').click()
+
+  // 3 ops: a position-addressed range delete + two id-addressed relative
+  // trims — the dependency rules must yield THREE independent groups
+  await page.evaluate((id) => {
+    const hooked = window as unknown as { __magneticFakeAdvisor?: () => unknown }
+    hooked.__magneticFakeAdvisor = () => ({
+      reply: 'Cut the dead air and tightened both ends — preview on the timeline.',
+      toolCalls: [
+        { name: 'ripple_delete_range', input: { from_sec: 4, to_sec: 6 } },
+        { name: 'trim_clip', input: { clip_id: id, edge: 'head', delta_sec: 1 } },
+        { name: 'trim_clip', input: { clip_id: id, edge: 'tail', delta_sec: -1 } }
+      ]
+    })
+  }, clipId)
+  await page.getByTestId('copilot-question').fill('tighten everything')
+  await page.getByTestId('copilot-send').click()
+  await expect(page.getByTestId('copilot-proposal')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('copilot-group-2')).toBeVisible()
+
+  // ---- A/B panes render real, differing frames (the phase-5 spike proof) ----
+  await page.waitForFunction(
+    () => {
+      const canvas = document.querySelector('[data-testid="ab-before"]') as HTMLCanvasElement
+      const ctx = canvas?.getContext('2d')
+      if (!ctx) return false
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+      for (let i = 0; i < data.length; i += 977) if (data[i] > 16) return true
+      return false
+    },
+    undefined,
+    { timeout: 30_000 }
+  )
+  const probe = await page.evaluate(() => {
+    const read = (testId: string): number => {
+      const canvas = document.querySelector(`[data-testid="${testId}"]`) as HTMLCanvasElement | null
+      const ctx = canvas?.getContext('2d')
+      if (!ctx || canvas === null) return -1
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+      let sum = 0
+      for (let i = 0; i < data.length; i += 977) sum += data[i]
+      return sum
+    }
+    return { before: read('ab-before'), after: read('ab-after') }
+  })
+  expect(probe.before).toBeGreaterThan(0)
+  expect(probe.after).toBeGreaterThan(0)
+  expect(probe.before).not.toBe(probe.after)
+  console.log(`A/B frames rendered and differ: ${probe.before} vs ${probe.after}`)
+
+  // ---- uncheck the range delete; accept only the two trims ----
+  const before = (await stateOf()).sequence.spine.reduce((s, i) => s + i.durationFlicks, 0)
+  await page.getByTestId('copilot-group-0').uncheck()
+  await expect(page.getByTestId('copilot-accept')).toContainText('2 selected')
+  await page.getByTestId('copilot-accept').click()
+  await expect(page.getByTestId('copilot-proposal')).not.toBeVisible()
+  const after = (await stateOf()).sequence.spine.reduce((s, i) => s + i.durationFlicks, 0)
+  expect(before - after).toBe(2 * 705_600_000) // trims only: 2s, NOT the range's 2s more
+  console.log('partial accept: range delete excluded, both trims landed')
+
+  // ---- attribution recorded for the touched clip ----
+  const attributions = (await stateOf()).attributions
+  expect(attributions.length).toBeGreaterThan(0)
+  expect(attributions[0][1].actor).toBe('Copilot')
+
+  // ---- one Ctrl+Z reverts the partial accept ----
+  await page.getByTestId('copilot-log').click()
+  await page.keyboard.press('Control+z')
+  expect((await stateOf()).sequence.spine.reduce((s, i) => s + i.durationFlicks, 0)).toBe(before)
+  console.log('one undo restored the pre-partial-accept sequence')
+
+  await app.close()
+})
