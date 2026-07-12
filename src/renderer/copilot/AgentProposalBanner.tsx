@@ -11,11 +11,22 @@ import { useTimelineStore } from '../state/timeline-store'
 export function AgentProposalBanner(): ReactNode {
   const sequence = useTimelineStore((state) => state.sequence)
   const pendingProposal = useTimelineStore((state) => state.pendingProposal)
+  const agentQueuedCount = useTimelineStore((state) => state.agentQueuedCount)
   if (
     pendingProposal === null ||
     pendingProposal.label !== 'Agent' ||
     sequence !== pendingProposal.baseSequence
   ) {
+    if (agentQueuedCount > 0) {
+      return (
+        <div className="agent-banner" data-testid="agent-queued-banner">
+          <span>
+            ⚡ {agentQueuedCount} agent request{agentQueuedCount === 1 ? '' : 's'} queued — waiting
+            for your gesture to finish.
+          </span>
+        </div>
+      )
+    }
     return null
   }
   return (

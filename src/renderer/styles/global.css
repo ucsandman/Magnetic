@@ -1492,6 +1492,22 @@ select,
   color: var(--color-text-dim);
 }
 
+.roughcut-drafts {
+  flex-shrink: 0;
+  border-top: 1px solid var(--color-border);
+  max-height: 30%;
+  overflow-y: auto;
+}
+
+.copilot-vision-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--font-size-small);
+  color: var(--color-text-dim);
+  flex-shrink: 0;
+}
+
 .agent-banner {
   display: flex;
   align-items: center;

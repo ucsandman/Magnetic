@@ -1,11 +1,12 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import type { Sequence } from '../../shared/timeline/model'
-import type { AudioEnvelope, LibrarySnapshot } from '../../shared/types'
+import type { LibrarySnapshot } from '../../shared/types'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 import { ensureTranscripts } from '../transcript/cache'
 import { buildCopilotContext } from './context'
+import { ensureEnvelopes } from './envelopes'
 import { scoreFlow } from './flow-score'
 import { executeEditTool } from './tools'
 
@@ -18,37 +19,29 @@ import { executeEditTool } from './tools'
  * requests only arrive while the sidecar is enabled.
  */
 
-const envelopeCache = new Map<string, AudioEnvelope>()
-
-async function ensureEnvelopes(
-  sequence: Sequence,
-  snapshot: LibrarySnapshot
-): Promise<Map<string, AudioEnvelope>> {
-  const wanted = new Set<string>()
-  for (const item of sequence.spine) if (item.kind === 'clip') wanted.add(item.assetId)
-  for (const cc of sequence.connected) if (cc.titleData === undefined) wanted.add(cc.assetId)
-  await Promise.all(
-    [...wanted].map(async (assetId) => {
-      if (envelopeCache.has(assetId)) return
-      const url = snapshot.assets[assetId]?.envelopeUrl
-      if (url === undefined) return
-      try {
-        const response = await fetch(url)
-        if (response.ok) envelopeCache.set(assetId, (await response.json()) as AudioEnvelope)
-      } catch {
-        // analysis missing — the context/flow simply won't include it
-      }
-    })
-  )
-  const result = new Map<string, AudioEnvelope>()
-  for (const assetId of wanted) {
-    const envelope = envelopeCache.get(assetId)
-    if (envelope !== undefined) result.set(assetId, envelope)
-  }
-  return result
-}
-
 type Outcome = 'accepted' | 'discarded' | null
+
+/**
+ * Gesture-queue: never present a proposal while the human is mid-drag — park
+ * the request (surfaced as "N queued" by the banner) and continue against
+ * whatever the sequence is AFTER the gesture, so their edit can't void it.
+ */
+async function waitForGestureEnd(): Promise<void> {
+  if (!useTimelineStore.getState().isInteracting) return
+  useTimelineStore.getState().bumpAgentQueued(1)
+  try {
+    await new Promise<void>((resolve) => {
+      const unsubscribe = useTimelineStore.subscribe((state) => {
+        if (!state.isInteracting) {
+          unsubscribe()
+          resolve()
+        }
+      })
+    })
+  } finally {
+    useTimelineStore.getState().bumpAgentQueued(-1)
+  }
+}
 
 async function handleAgentTool(
   tool: string,
@@ -97,10 +90,15 @@ async function handleAgentTool(
       if (ops === null || ops.length === 0) {
         return { error: 'propose_edits needs { ops: [{ name, input }, …] }' }
       }
-      if (store.pendingProposal !== null) {
+      await waitForGestureEnd()
+      // re-read after any wait: the gesture may have edited the sequence
+      const current = useTimelineStore.getState()
+      const base = current.sequence
+      if (base === null) return { error: 'no project is open in the editor' }
+      if (current.pendingProposal !== null) {
         return { error: 'a proposal is already awaiting human review — poll get_status' }
       }
-      let scratch = sequence
+      let scratch = base
       const executed: { name: string; input: unknown; summary: string }[] = []
       const results: string[] = []
       for (const op of ops) {
@@ -112,7 +110,7 @@ async function handleAgentTool(
           executed.push({ name: op.name, input: op.input, summary: outcome.summary })
         }
       }
-      if (scratch === sequence || executed.length === 0) {
+      if (scratch === base || executed.length === 0) {
         return { error: 'the ops changed nothing', results }
       }
       lastOutcome.current = null

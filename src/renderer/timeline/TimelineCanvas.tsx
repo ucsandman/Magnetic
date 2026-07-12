@@ -378,6 +378,7 @@ export function TimelineCanvas(): ReactNode {
     ghostRef.current = null
     snapGuideXRef.current = null
     slipPreviewRef.current = null
+    useTimelineStore.getState().setInteracting(false)
   }
 
   const finishDrag = (): void => {
@@ -411,6 +412,8 @@ export function TimelineCanvas(): ReactNode {
    * canvas; Escape cancels without committing (kernel untouched until mouseup).
    */
   const beginDragCapture = (): void => {
+    // gesture-queue: external agent proposals defer until this flips back
+    useTimelineStore.getState().setInteracting(true)
     const cleanup = (): void => {
       window.removeEventListener('mousemove', onWindowMove)
       window.removeEventListener('mouseup', onWindowUp)

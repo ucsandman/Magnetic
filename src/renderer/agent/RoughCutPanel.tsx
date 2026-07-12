@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import type { Transcript } from '../../shared/types'
 import { ABReview } from '../copilot/ABReview'
+import { ensureEnvelopes } from '../copilot/envelopes'
 import { scoreFlow } from '../copilot/flow-score'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
@@ -32,6 +33,96 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
   const [transcripts, setTranscripts] = useState<Map<string, Transcript>>(new Map())
   const [cleanupVoice, setCleanupVoice] = useState(false)
   const { envelopes, analysisFailures } = useAssetEnvelopes(sequence, snapshot)
+  const [drafts, setDrafts] = useState<
+    Map<string, { ranges: RoughCutRange[]; savedFlicks: number }>
+  >(new Map())
+
+  // Draft queue: every analyzed asset NOT already on the timeline gets a
+  // rough-cut preview computed against a synthetic one-clip sequence — the
+  // hands-off "drop footage in, drafts appear" lane.
+  const draftCandidates = useMemo(() => {
+    if (snapshot === null) return []
+    const usedAssetIds = new Set(
+      (sequence?.spine ?? [])
+        .filter((item) => item.kind === 'clip')
+        .map((item) => (item.kind === 'clip' ? item.assetId : ''))
+    )
+    return Object.values(snapshot.assets).filter(
+      (asset) =>
+        asset.audio !== undefined &&
+        asset.envelopeUrl !== undefined &&
+        !asset.missing &&
+        !usedAssetIds.has(asset.id)
+    )
+  }, [snapshot, sequence])
+
+  useEffect(() => {
+    if (snapshot === null) return
+    let disposed = false
+    void (async () => {
+      const next = new Map<string, { ranges: RoughCutRange[]; savedFlicks: number }>()
+      for (const asset of draftCandidates) {
+        const synthetic = {
+          id: `draft-${asset.id}`,
+          fps: asset.video?.fps ?? { num: 30, den: 1 },
+          spine: [
+            {
+              kind: 'clip' as const,
+              id: `draft-clip-${asset.id}`,
+              assetId: asset.id,
+              mediaInFlicks: 0,
+              durationFlicks: asset.durationFlicks,
+              sourceDurationFlicks: asset.durationFlicks
+            }
+          ],
+          connected: []
+        }
+        const [draftTranscripts, draftEnvelopes] = await Promise.all([
+          ensureTranscripts(synthetic, snapshot),
+          ensureEnvelopes(synthetic, snapshot)
+        ])
+        const ranges = planRoughCut(synthetic, draftTranscripts, draftEnvelopes, {
+          silence: silenceOptionsFor(aggressiveness / 100),
+          includeFillers
+        })
+        next.set(asset.id, {
+          ranges,
+          savedFlicks: ranges.reduce((sum, range) => sum + (range.toFlicks - range.fromFlicks), 0)
+        })
+      }
+      if (!disposed) setDrafts(next)
+    })()
+    return () => {
+      disposed = true
+    }
+  }, [draftCandidates, snapshot, aggressiveness, includeFillers])
+
+  const loadDraft = (assetId: string): void => {
+    const asset = snapshot?.assets[assetId]
+    const draft = drafts.get(assetId)
+    if (asset === undefined || draft === undefined) return
+    const store = useTimelineStore.getState()
+    const previousEnd = (store.sequence?.spine ?? []).reduce(
+      (sum, item) => sum + item.durationFlicks,
+      0
+    )
+    store.appendSource({
+      assetId: asset.id,
+      mediaInFlicks: 0,
+      durationFlicks: asset.durationFlicks,
+      sourceDurationFlicks: asset.durationFlicks,
+      fps: asset.video?.fps ?? null
+    })
+    if (draft.ranges.length > 0) {
+      store.proposeRoughCut(
+        draft.ranges.map((range) => ({
+          ...range,
+          fromFlicks: range.fromFlicks + previousEnd,
+          toFlicks: range.toFlicks + previousEnd
+        }))
+      )
+    }
+  }
 
   useEffect(() => {
     if (sequence === null || snapshot === null) return
@@ -226,6 +317,37 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
               </div>
             ))}
           </div>
+          {draftCandidates.length > 0 && (
+            <div className="roughcut-drafts" data-testid="roughcut-drafts">
+              <div className="silence-summary">
+                Drafts — analyzed footage not on the timeline yet
+              </div>
+              {draftCandidates.map((asset, index) => {
+                const draft = drafts.get(asset.id)
+                return (
+                  <div key={asset.id} className="silence-row" data-testid={`draft-card-${index}`}>
+                    <span className="silence-row-start">{asset.fileName}</span>
+                    <span className="silence-row-duration" data-testid={`draft-stats-${index}`}>
+                      {draft === undefined
+                        ? 'analyzing…'
+                        : draft.ranges.length === 0
+                          ? 'nothing to cut'
+                          : `${draft.ranges.length} cut${draft.ranges.length === 1 ? '' : 's'} · ${formatSec(draft.savedFlicks)} tighter`}
+                    </span>
+                    <button
+                      type="button"
+                      data-testid={`draft-load-${index}`}
+                      disabled={draft === undefined}
+                      title="Append this clip and preview its rough cut as a ghost diff"
+                      onClick={() => loadDraft(asset.id)}
+                    >
+                      Draft
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
           <div className="silence-actions">
             <button
               type="button"

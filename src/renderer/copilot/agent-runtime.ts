@@ -47,6 +47,11 @@ export interface CopilotTurnRequest {
   contextOf(scratch: Sequence): string
   /** Flow self-check of an arbitrary scratch — backs the check_flow tool. */
   flowOf?(scratch: Sequence): string
+  /**
+   * Opt-in vision: a clip's filmstrip JPEG as base64 — backs view_filmstrip.
+   * Only declared when the human enabled it in the panel.
+   */
+  filmstripOf?(clipId: string): Promise<{ data: string; mediaType: string; note: string } | null>
   onDelta(text: string): void
   /** Latest sequence time a tool call referenced (agent playhead). */
   onToolTime?(flicks: number): void
@@ -79,6 +84,17 @@ const CHECK_FLOW_TOOL: Anthropic.Tool = {
   description:
     'Grade the WORKING COPY: a 0-100 flow score plus flags for residual dead air, untransitioned jump cuts, and sub-half-second slivers. Call after a batch of edits and fix what it flags before finishing.',
   input_schema: { type: 'object', properties: {} }
+}
+
+const VIEW_FILMSTRIP_TOOL: Anthropic.Tool = {
+  name: 'view_filmstrip',
+  description:
+    'See evenly spaced frames from a clip as one image strip (left to right in time). Use ONLY when transcript and timing cannot answer — e.g. judging which take looks better. Address clips by their [id=…] from the context.',
+  input_schema: {
+    type: 'object',
+    properties: { clip_id: { type: 'string' } },
+    required: ['clip_id']
+  }
 }
 
 /**
@@ -152,6 +168,7 @@ export async function streamCopilotTurn(request: CopilotTurnRequest): Promise<Co
   }))
   const tools: Anthropic.Tool[] = [...EDIT_TOOLS, READ_TIMELINE_TOOL]
   if (request.flowOf !== undefined) tools.push(CHECK_FLOW_TOOL)
+  if (request.filmstripOf !== undefined) tools.push(VIEW_FILMSTRIP_TOOL)
 
   let scratch = request.base
   const ops: CopilotOpEntry[] = []
@@ -204,6 +221,30 @@ export async function streamCopilotTurn(request: CopilotTurnRequest): Promise<Co
           type: 'tool_result',
           tool_use_id: toolUse.id,
           content: request.flowOf(scratch)
+        })
+        continue
+      }
+      if (toolUse.name === VIEW_FILMSTRIP_TOOL.name && request.filmstripOf !== undefined) {
+        const clipId = (toolUse.input as { clip_id?: unknown })?.clip_id
+        const strip = typeof clipId === 'string' ? await request.filmstripOf(clipId) : null
+        results.push({
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content:
+            strip === null
+              ? 'no filmstrip available for that clip id'
+              : [
+                  {
+                    type: 'image',
+                    source: {
+                      type: 'base64',
+                      media_type: strip.mediaType as 'image/jpeg',
+                      data: strip.data
+                    }
+                  },
+                  { type: 'text', text: strip.note }
+                ],
+          is_error: strip === null ? true : undefined
         })
         continue
       }

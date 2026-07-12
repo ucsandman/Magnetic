@@ -200,6 +200,12 @@ interface TimelineStore {
   /** Where the copilot last touched the timeline (ruler marker); ephemeral. */
   agentPlayheadFlicks: number | null
   setAgentPlayhead(flicks: number | null): void
+  /** True while the human is mid-gesture on the timeline (drag/scrub). */
+  isInteracting: boolean
+  setInteracting(interacting: boolean): void
+  /** External agent requests parked behind an active gesture ("N queued"). */
+  agentQueuedCount: number
+  bumpAgentQueued(delta: number): void
   /**
    * Session-only provenance: clips whose content an accepted AI pass changed
    * (clip dot + Inspector line). Never persisted into the project.
@@ -774,6 +780,18 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 
     setAgentPlayhead(agentPlayheadFlicks) {
       set({ agentPlayheadFlicks })
+    },
+
+    isInteracting: false,
+
+    setInteracting(isInteracting) {
+      set({ isInteracting })
+    },
+
+    agentQueuedCount: 0,
+
+    bumpAgentQueued(delta) {
+      set((state) => ({ agentQueuedCount: Math.max(0, state.agentQueuedCount + delta) }))
     },
 
     attributions: new Map(),

@@ -193,6 +193,8 @@ The review window stays open until you edit something else or click **Done**; th
 
 Tick **Clean up voice** before accepting and every asset in the cut is also queued for denoising (below).
 
+**Drafts — hands-off rough cuts per import.** Every analyzed clip that isn't on the timeline yet appears as a card at the bottom of the Rough Cut tab with its potential ("2 cuts · 4.1 s tighter", live against the current aggressiveness). Click **Draft** and the clip is appended with its cuts proposed as a ghost diff — drop five raw takes into the library and five ready drafts are waiting.
+
 ### Voice cleanup — one-click denoise
 
 Right-click any asset with audio → **Clean Up Audio** (or tick **Clean up voice** in Rough Cut). ffmpeg's FFT denoiser runs in the background and writes a cleaned track into the library cache; from then on **playback and export automatically prefer the cleaned audio** — nothing to re-link, and the original file is never touched. Re-run the same menu item to redo it after re-recording.
@@ -211,6 +213,7 @@ The **Copilot** tab is an editing partner: it sees the open sequence (clips and 
 4. Scrub the **before/after** panes in the card — real frames from the playback engine, kept on the same moment of content on both sides (pause playback to see them).
 5. Untick any change you don't want and **Accept** the rest — changes that depend on each other are linked into one decision (position-addressed edits after cuts, or edits to clips a cut created), and the card says so. The kept changes replay transactionally: if they can't stand alone, nothing applies and the proposal stays open. **Accept** still commits as ONE undo step; **Discard** drops everything without a trace.
 6. Every clip an accepted AI pass touched gets a small blue dot and an **"Edited by Copilot/Rough Cut · N min ago"** line in the Inspector when selected — session-only provenance, never saved into your project.
+7. The **👁 vision toggle** (off by default) lets the copilot look at clip filmstrips for visually ambiguous asks ("which take looks better?") — those thumbnail strips are sent to the API only while the toggle is on and only when the copilot decides it needs pixels.
 
 Under the hood the copilot uses the same edit operations as your keyboard — blade, ripple delete, trim, roll, slip, move, transitions — each validated against the timeline's invariants before it can even be proposed. There is no export tool: only you can ship. If transcription hasn't finished, it will say so rather than guess.
 
@@ -223,6 +226,8 @@ Magnetic can act as an MCP server: Claude Code, Claude Desktop, or any MCP clien
 3. The agent gets four tools: `read_timeline` (your cut as text), `check_flow` (the same self-check score), `get_status` (including whether you accepted or discarded its last proposal), and `propose_edits` (the full edit grammar, times in seconds).
 
 Everything you know from the Copilot applies: ghost hatch + green preview strip, one undo step per accepted batch, per-change checkboxes in the Copilot tab, attribution dots, and the flow score.
+
+You are never interrupted: if an agent proposes while you're mid-drag, the request parks ("⚡ 1 agent request queued — waiting for your gesture to finish") and is computed against your timeline as it stands *after* the drag.
 
 ### Burned-in captions — live from the transcript
 

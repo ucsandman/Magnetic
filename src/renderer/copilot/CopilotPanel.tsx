@@ -48,6 +48,7 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
   const [keyDraft, setKeyDraft] = useState('')
   const [editingKey, setEditingKey] = useState(false)
   const [question, setQuestion] = useState('')
+  const [visionEnabled, setVisionEnabled] = useState(false)
   const [transcripts, setTranscripts] = useState<Map<string, Transcript>>(new Map())
   const { envelopes } = useAssetEnvelopes(sequence, snapshot)
   const abortRef = useRef<AbortController | null>(null)
@@ -179,6 +180,30 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
       const report = scoreFlow(scratch, envelopes)
       return `Flow score ${report.score}/100 — ${report.flags.length} flag(s):\n${report.flags.map((flag) => `- [${(flag.flicks / 705_600_000).toFixed(1)}s] ${flag.kind}: ${flag.message}`).join('\n') || '(none)'}`
     }
+    // opt-in vision: hand the runtime a filmstrip fetcher only when enabled
+    const filmstripOf = async (
+      clipId: string
+    ): Promise<{ data: string; mediaType: string; note: string } | null> => {
+      const current = useTimelineStore.getState().sequence
+      const clip =
+        current?.spine.find((item) => item.id === clipId && item.kind === 'clip') ??
+        current?.connected.find((cc) => cc.id === clipId)
+      if (clip === undefined || !('assetId' in clip)) return null
+      const asset = snapshot?.assets[clip.assetId]
+      if (asset?.filmstrip === undefined) return null
+      const response = await fetch(asset.filmstrip.url)
+      if (!response.ok) return null
+      const bytes = new Uint8Array(await response.arrayBuffer())
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
+      }
+      return {
+        data: btoa(binary),
+        mediaType: 'image/jpeg',
+        note: `Filmstrip of ${asset.fileName}: ${asset.filmstrip.frameCount} frames left to right, one every ${(asset.filmstrip.intervalFlicks / 705_600_000).toFixed(1)}s of SOURCE media (the clip shows media from ${(clip.mediaInFlicks / 705_600_000).toFixed(1)}s to ${((clip.mediaInFlicks + clip.durationFlicks) / 705_600_000).toFixed(1)}s).`
+      }
+    }
     void streamCopilotTurn({
       apiKey,
       context: contextOf(sequence),
@@ -186,6 +211,7 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
       base: sequence,
       contextOf,
       flowOf,
+      filmstripOf: visionEnabled ? filmstripOf : undefined,
       signal: controller.signal,
       onDelta: (delta) => {
         const current = useCopilotChat.getState()
@@ -408,6 +434,18 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
             >
               Key…
             </button>
+            <label
+              className="copilot-vision-toggle"
+              title="Let the copilot look at clip filmstrips (frame thumbnails) for visually ambiguous asks — sends those images to the API. Off by default."
+            >
+              <input
+                type="checkbox"
+                data-testid="copilot-vision"
+                checked={visionEnabled}
+                onChange={(event) => setVisionEnabled(event.target.checked)}
+              />
+              <span>👁</span>
+            </label>
           </div>
         </>
       )}
