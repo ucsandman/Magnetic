@@ -58,7 +58,7 @@ test('copilot advisor: key setup, perception context accuracy, streamed reply', 
   // ---- fresh userData: the Copilot tab asks for a key first ----
   await page.getByTestId('browser-tab-copilot').click()
   await expect(page.getByTestId('copilot-setup')).toBeVisible()
-  await expect(page.getByTestId('copilot-disclaimer')).toContainText('cannot edit')
+  await expect(page.getByTestId('copilot-disclaimer')).toContainText('only when you Accept')
   await page.getByTestId('copilot-key-input').fill('sk-ant-test-key-not-real')
   await page.getByTestId('copilot-key-save').click()
   await expect(page.getByTestId('copilot-question')).toBeVisible()
@@ -102,6 +102,52 @@ test('copilot advisor: key setup, perception context accuracy, streamed reply', 
   expect(captured!.context).toContain('Dead air')
   expect(captured!.context).toMatch(/0:02\.\d to 0:03\.\d/) // the actual detected gap
   console.log('context sent to the advisor reflects the real open sequence')
+
+  // ==== phase 4: the copilot EDITS through the ghost-diff gate ====
+  const durationOf = async (): Promise<number> => {
+    const state = (await page.evaluate(() =>
+      (
+        window as unknown as {
+          __magneticState(): { sequence: { spine: { durationFlicks: number }[] } }
+        }
+      ).__magneticState()
+    )) as { sequence: { spine: { durationFlicks: number }[] } }
+    return state.sequence.spine.reduce((sum, item) => sum + item.durationFlicks, 0)
+  }
+  const beforeEdit = await durationOf()
+
+  // scripted tool calls run through the REAL executor against a scratch copy
+  await page.evaluate(() => {
+    const hooked = window as unknown as {
+      __magneticFakeAdvisor?: (input: { context: string; question: string }) => unknown
+    }
+    hooked.__magneticFakeAdvisor = () => ({
+      reply: 'Cut the 1.5s pause at 0:02.0–0:03.5. Preview is on your timeline.',
+      toolCalls: [{ name: 'ripple_delete_range', input: { from_sec: 2, to_sec: 3.5 } }]
+    })
+  })
+  await page.getByTestId('copilot-question').fill('tighten this — remove the pause')
+  await page.getByTestId('copilot-send').click()
+
+  // proposal card appears; the actual sequence is UNTOUCHED
+  await expect(page.getByTestId('copilot-proposal')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('copilot-change-0')).toContainText('0:02.0')
+  expect(await durationOf()).toBe(beforeEdit)
+
+  // Accept commits the batch as ONE undo step
+  await page.getByTestId('copilot-accept').click()
+  const afterAccept = await durationOf()
+  expect(beforeEdit - afterAccept).toBe(1.5 * 705_600_000)
+  await expect(page.getByTestId('copilot-proposal')).not.toBeVisible()
+  console.log(
+    `copilot edit accepted: ${(beforeEdit / 705_600_000).toFixed(1)}s -> ${(afterAccept / 705_600_000).toFixed(1)}s`
+  )
+
+  // one Ctrl+Z restores the whole batch
+  await page.getByTestId('copilot-log').click()
+  await page.keyboard.press('Control+z')
+  expect(await durationOf()).toBe(beforeEdit)
+  console.log('one undo restored the pre-copilot sequence')
 
   await app.close()
 })

@@ -5,7 +5,7 @@ import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 import { useAssetEnvelopes } from '../silence/use-envelopes'
 import { ensureTranscripts } from '../transcript/cache'
-import { advisorErrorMessage, streamAdvisorReply, type AdvisorTurn } from './agent-runtime'
+import { advisorErrorMessage, streamCopilotTurn, type AdvisorTurn } from './agent-runtime'
 import { buildCopilotContext } from './context'
 
 /**
@@ -37,6 +37,7 @@ const useCopilotChat = create<CopilotChat>((set) => ({
 export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
   const { snapshot } = useLibrary()
   const sequence = useTimelineStore((state) => state.sequence)
+  const pendingProposal = useTimelineStore((state) => state.pendingProposal)
   const { turns, streaming, error } = useCopilotChat()
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [keyLoaded, setKeyLoaded] = useState(false)
@@ -73,6 +74,20 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
+  // This panel's proposal: an op batch (ranges === null) still computed
+  // against the current sequence. Human edits underneath simply void it.
+  const copilotProposal =
+    pendingProposal !== null &&
+    pendingProposal.ranges === null &&
+    sequence === pendingProposal.baseSequence
+      ? pendingProposal
+      : null
+  useEffect(() => {
+    if (pendingProposal !== null && pendingProposal.ranges === null && copilotProposal === null) {
+      useTimelineStore.getState().discardProposal()
+    }
+  }, [pendingProposal, copilotProposal])
+
   const saveKey = (): void => {
     const trimmed = keyDraft.trim()
     if (trimmed === '') return
@@ -87,10 +102,16 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
     const chat = useCopilotChat.getState()
     const text = question.trim()
     if (text === '' || chat.streaming !== null || sequence === null || apiKey === null) return
+    const store = useTimelineStore.getState()
+    // a new instruction supersedes any unreviewed batch from the last turn
+    if (store.pendingProposal !== null && store.pendingProposal.ranges === null) {
+      store.discardProposal()
+    }
     const assetNames = new Map(
       Object.values(snapshot?.assets ?? {}).map((asset) => [asset.id, asset.fileName])
     )
-    const context = buildCopilotContext(sequence, transcripts, envelopes, assetNames)
+    const contextOf = (scratch: typeof sequence): string =>
+      buildCopilotContext(scratch, transcripts, envelopes, assetNames)
     const nextTurns: AdvisorTurn[] = [...chat.turns, { role: 'user', text }]
     chat.setTurns(nextTurns)
     chat.setError(null)
@@ -98,25 +119,34 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
     setQuestion('')
     const controller = new AbortController()
     abortRef.current = controller
-    void streamAdvisorReply({
+    void streamCopilotTurn({
       apiKey,
-      context,
+      context: contextOf(sequence),
       turns: nextTurns,
+      base: sequence,
+      contextOf,
       signal: controller.signal,
       onDelta: (delta) => {
         const current = useCopilotChat.getState()
         current.setStreaming((current.streaming ?? '') + delta)
+      },
+      onToolTime: (flicks) => {
+        useTimelineStore.getState().setAgentPlayhead(flicks)
       }
     })
-      .then((reply) => {
+      .then((result) => {
         const current = useCopilotChat.getState()
-        current.setTurns([...current.turns, { role: 'assistant', text: reply }])
+        current.setTurns([...current.turns, { role: 'assistant', text: result.reply }])
+        if (result.proposed !== sequence && result.changes.length > 0) {
+          useTimelineStore.getState().proposeCopilotChanges(result.proposed, result.changes)
+        }
       })
       .catch((failure: unknown) => {
         useCopilotChat.getState().setError(advisorErrorMessage(failure))
       })
       .finally(() => {
         useCopilotChat.getState().setStreaming(null)
+        useTimelineStore.getState().setAgentPlayhead(null)
         abortRef.current = null
       })
   }
@@ -136,7 +166,8 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
       }}
     >
       <div className="copilot-disclaimer" data-testid="copilot-disclaimer">
-        Read-only advisor — it sees your timeline, dead air, and transcript; it cannot edit (yet).
+        The copilot sees your timeline, dead air, and transcript. Its edits are proposals: they
+        preview as a ghost diff and apply only when you Accept — never directly.
       </div>
       {needsKey && (
         <div className="copilot-setup" data-testid="copilot-setup">
@@ -201,6 +232,39 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
               </div>
             )}
           </div>
+          {copilotProposal !== null && (
+            <div className="copilot-proposal" data-testid="copilot-proposal">
+              <div className="copilot-proposal-title">
+                Proposed {copilotProposal.changes.length} change
+                {copilotProposal.changes.length === 1 ? '' : 's'} — previewed on the timeline,
+                nothing applied yet. Accept commits as one undo step.
+              </div>
+              <ul className="copilot-proposal-list">
+                {copilotProposal.changes.map((change, index) => (
+                  <li key={index} data-testid={`copilot-change-${index}`}>
+                    {change}
+                  </li>
+                ))}
+              </ul>
+              <div className="copilot-proposal-actions">
+                <button
+                  type="button"
+                  className="primary"
+                  data-testid="copilot-accept"
+                  onClick={() => useTimelineStore.getState().acceptProposal()}
+                >
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  data-testid="copilot-discard"
+                  onClick={() => useTimelineStore.getState().discardProposal()}
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          )}
           <div className="copilot-input-row">
             <input
               type="text"

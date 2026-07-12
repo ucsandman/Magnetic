@@ -78,6 +78,8 @@ export interface RenderState {
     deletions: { fromFlicks: number; toFlicks: number }[]
     ghostClips: { fromFlicks: number; toFlicks: number }[]
   } | null
+  /** Where the copilot last touched the timeline (marker in the ruler). */
+  agentPlayheadFlicks: number | null
   playheadFlicks: number
   zoomPxPerSec: number
   scrollX: number
@@ -716,6 +718,26 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
       ctx.fillText('AI', x, RULER_H - 7 + 1)
     }
     ctx.textAlign = 'left'
+  }
+
+  // agent playhead: where the copilot is currently working (streaming turns)
+  if (state.agentPlayheadFlicks !== null) {
+    const x = timeToX(state, state.agentPlayheadFlicks)
+    if (x >= -8 && x <= state.width + 8) {
+      ctx.strokeStyle = '#bf5af2'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(x + 0.5, RULER_H - 4)
+      ctx.lineTo(x + 0.5, state.height)
+      ctx.stroke()
+      ctx.fillStyle = '#bf5af2'
+      ctx.beginPath()
+      ctx.moveTo(x - 5, RULER_H - 12)
+      ctx.lineTo(x + 5, RULER_H - 12)
+      ctx.lineTo(x, RULER_H - 4)
+      ctx.closePath()
+      ctx.fill()
+    }
   }
 
   // skimmer

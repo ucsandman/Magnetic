@@ -59,6 +59,7 @@ import {
   type Selection
 } from '../../shared/timeline/select'
 import { UndoStack, type Op } from '../../shared/timeline/undo'
+import { validateSequence } from '../../shared/timeline/validate'
 import {
   buildRoughCutProposal,
   cutPointsFor,
@@ -159,7 +160,12 @@ interface TimelineStore {
   pendingProposal: {
     baseSequence: Sequence
     proposedSequence: Sequence
-    ranges: RoughCutRange[]
+    /** Rough-cut proposals carry ranges: Accept re-applies them with per-cut
+     *  review provenance. Copilot op batches carry null + a change list. */
+    ranges: RoughCutRange[] | null
+    /** Plain-English change list (copilot batches). */
+    changes: string[]
+    label: 'Rough Cut' | 'Copilot'
   } | null
   /**
    * Build + validate a rough-cut proposal against the current sequence.
@@ -167,10 +173,19 @@ interface TimelineStore {
    * the validateSequence gate — an unusable proposal is never offered.
    */
   proposeRoughCut(ranges: RoughCutRange[]): boolean
+  /**
+   * Offer a copilot op batch (already executed against a scratch) as the
+   * pending proposal. Same gates: validated, non-empty, computed against the
+   * CURRENT sequence.
+   */
+  proposeCopilotChanges(proposedSequence: Sequence, changes: string[]): boolean
   /** Commit the pending proposal through the undo stack as ONE group. */
   acceptProposal(): void
   /** Drop the pending proposal. Zero history entries by construction. */
   discardProposal(): void
+  /** Where the copilot last touched the timeline (ruler marker); ephemeral. */
+  agentPlayheadFlicks: number | null
+  setAgentPlayhead(flicks: number | null): void
   /**
    * Ripple-delete a rough-cut plan (ascending, non-overlapping — what
    * planRoughCut returns) as ONE undo step, remembering provenance.
@@ -601,7 +616,37 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
         console.warn(`rough cut proposal rejected — ${detail || 'plan removes nothing'}`)
         return false
       }
-      set({ pendingProposal: { baseSequence: sequence, proposedSequence: proposed, ranges } })
+      set({
+        pendingProposal: {
+          baseSequence: sequence,
+          proposedSequence: proposed,
+          ranges,
+          changes: [],
+          label: 'Rough Cut'
+        }
+      })
+      return true
+    },
+
+    proposeCopilotChanges(proposedSequence, changes) {
+      const { sequence } = get()
+      if (sequence === null || proposedSequence === sequence) return false
+      const violations = validateSequence(proposedSequence)
+      if (violations.length > 0) {
+        console.warn(
+          `copilot proposal rejected — ${violations.map((error) => `${error.code}: ${error.message}`).join('; ')}`
+        )
+        return false
+      }
+      set({
+        pendingProposal: {
+          baseSequence: sequence,
+          proposedSequence,
+          ranges: null,
+          changes,
+          label: 'Copilot'
+        }
+      })
       return true
     },
 
@@ -612,11 +657,28 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
       // The scratch was computed against this exact sequence; if the human
       // kept editing underneath it, the proposal is stale and silently drops.
       if (sequence !== pendingProposal.baseSequence) return
-      get().applyRoughCut(pendingProposal.ranges)
+      if (pendingProposal.ranges !== null) {
+        get().applyRoughCut(pendingProposal.ranges)
+        return
+      }
+      // Op batches commit as ONE snapshot entry through the same stack the
+      // human's keystrokes use: {before: base, after: proposed} — one Ctrl+Z.
+      if (stack === null) return
+      stack.apply((seq) => ({
+        next: pendingProposal.proposedSequence,
+        inverse: { type: 'restore', sequence: seq }
+      }))
+      syncFromStack()
     },
 
     discardProposal() {
       set({ pendingProposal: null })
+    },
+
+    agentPlayheadFlicks: null,
+
+    setAgentPlayhead(agentPlayheadFlicks) {
+      set({ agentPlayheadFlicks })
     },
 
     roughCut: null,
@@ -830,7 +892,9 @@ export function installTimelineTestHooks(): void {
       clipboard,
       silenceRanges,
       roughCutCuts: roughCut?.cuts ?? null,
-      proposalRanges: pendingProposal?.ranges ?? null
+      proposalRanges: pendingProposal?.ranges ?? null,
+      proposalChanges: pendingProposal?.changes ?? null,
+      proposalLabel: pendingProposal?.label ?? null
     }
   }
   testWindow.__magneticTimeline = {

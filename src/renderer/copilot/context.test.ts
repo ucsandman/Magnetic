@@ -27,11 +27,12 @@ function envelopeWithGap(fromSec: number, toSec: number): AudioEnvelope {
 const names = new Map([['asset-a', 'interview.mp4']])
 
 describe('buildCopilotContext', () => {
-  it('describes the timeline: duration, clip names, and positions', () => {
+  it('describes the timeline: duration, clip names, ids, and positions', () => {
     const context = buildCopilotContext(seq([clip('a', 300)]), new Map(), new Map(), names)
     expect(context).toContain('interview.mp4')
     expect(context).toContain('10.0s') // total duration
     expect(context).toContain('0:00.0') // clip start
+    expect(context).toContain('id=a') // tools address clips by id
   })
 
   it('includes the transcript with timestamps', () => {

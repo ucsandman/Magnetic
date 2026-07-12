@@ -1423,6 +1423,32 @@ select,
   flex-shrink: 0;
 }
 
+.copilot-proposal {
+  flex-shrink: 0;
+  margin: 0 8px 8px;
+  padding: 8px;
+  border: 1px solid #30d15866;
+  border-radius: 6px;
+  background: #30d15812;
+  font-size: var(--font-size-small);
+}
+
+.copilot-proposal-title {
+  color: var(--color-text);
+  margin-bottom: 6px;
+}
+
+.copilot-proposal-list {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  color: var(--color-text-dim);
+}
+
+.copilot-proposal-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .copilot-input-row input {
   flex: 1;
   min-width: 0;

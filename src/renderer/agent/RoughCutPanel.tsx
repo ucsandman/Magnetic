@@ -49,11 +49,29 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
 
   // Proposal mode while the scratch is still computed against this sequence;
   // the human is never locked out, so their edits simply void the proposal.
-  const proposing = pendingProposal !== null && sequence === pendingProposal.baseSequence
+  // Copilot proposals (ranges === null) belong to the Copilot panel — this
+  // panel neither renders nor discards them.
+  const roughCutProposal =
+    pendingProposal !== null &&
+    pendingProposal.ranges !== null &&
+    sequence === pendingProposal.baseSequence
+      ? { ranges: pendingProposal.ranges }
+      : null
+  const proposing = roughCutProposal !== null
   useEffect(() => {
-    if (pendingProposal !== null && !proposing) useTimelineStore.getState().discardProposal()
+    if (pendingProposal !== null && pendingProposal.ranges !== null && !proposing) {
+      useTimelineStore.getState().discardProposal()
+    }
   }, [pendingProposal, proposing])
-  useEffect(() => () => useTimelineStore.getState().discardProposal(), [])
+  useEffect(
+    () => () => {
+      const pending = useTimelineStore.getState().pendingProposal
+      if (pending !== null && pending.ranges !== null) {
+        useTimelineStore.getState().discardProposal()
+      }
+    },
+    []
+  )
 
   const plan = useMemo(
     () =>
@@ -211,13 +229,13 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
           </div>
         </>
       )}
-      {proposing && (
+      {roughCutProposal !== null && (
         <>
           <div className="silence-summary" data-testid="roughcut-proposal-summary">
-            Proposed: {pendingProposal.ranges.length} cut
-            {pendingProposal.ranges.length === 1 ? '' : 's'} ·{' '}
+            Proposed: {roughCutProposal.ranges.length} cut
+            {roughCutProposal.ranges.length === 1 ? '' : 's'} ·{' '}
             {formatSec(
-              pendingProposal.ranges.reduce(
+              roughCutProposal.ranges.reduce(
                 (sum, range) => sum + (range.toFlicks - range.fromFlicks),
                 0
               )
@@ -226,7 +244,7 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
             applied yet.
           </div>
           <div className="silence-list" data-testid="roughcut-proposal-list">
-            {pendingProposal.ranges.map((range, index) => (
+            {roughCutProposal.ranges.map((range, index) => (
               <div
                 key={rangeKey(range)}
                 className="silence-row"

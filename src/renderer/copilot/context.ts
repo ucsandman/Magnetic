@@ -59,10 +59,11 @@ export function buildCopilotContext(
     const name = assetNames.get(item.assetId) ?? item.assetId
     const notes = item.audioDisabled === true ? ' [audio detached]' : ''
     lines.push(
-      `${index}. ${name} — ${fmtTime(start)} to ${fmtTime(position)} (${fmtDur(item.durationFlicks)}), source in ${fmtTime(item.mediaInFlicks)}${notes}`
+      `${index}. ${name} [id=${item.id}] — ${fmtTime(start)} to ${fmtTime(position)} (${fmtDur(item.durationFlicks)}), source in ${fmtTime(item.mediaInFlicks)}${notes}`
     )
     index += 1
   }
+  lines.push('Edit point N (0-based) is the cut between spine items N and N+1 in the list above.')
 
   if (sequence.connected.length > 0) {
     lines.push('', '## Connected clips')

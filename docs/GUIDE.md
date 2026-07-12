@@ -191,15 +191,16 @@ The **Rough Cut** tab merges dead-air and filler-word detection into a single pl
 
 The review window stays open until you edit something else or click **Done**; the AI badges are session-only provenance, never saved into the project. Every proposed sequence is checked against the timeline's legality invariants before it can be offered. Filler detection needs a transcript, so on freshly imported clips give transcription a moment to finish first.
 
-### Copilot — ask questions about your cut
+### Copilot — chat that edits, behind your Accept
 
-The **Copilot** tab is a read-only editing advisor: it can see the open sequence (clips and timing), the detected dead air, and the transcript — and nothing else. It cannot change the timeline.
+The **Copilot** tab is an editing partner: it sees the open sequence (clips and timing), the detected dead air, and the transcript, and it can both answer questions and make edits — but every edit lands on a **working copy**, never your timeline.
 
 1. First open asks for your Anthropic API key (get one at console.anthropic.com). It's stored in the app's settings on this machine, sent only to api.anthropic.com, and never logged. Change it later with the **Key…** button.
-2. Ask about the cut in plain language: "what happens in the first 30 seconds?", "where does it drag?", "which takes mention the launch date?" Answers stream in with m:ss.s timecodes you can cross-check on the timeline.
-3. Suggestions are advice, not actions — the copilot tells you *what* to cut and *where*; you (or the Rough Cut tab) do the cutting.
+2. Ask ("where does it drag?") or instruct ("tighten this — cut the pauses and smooth the jumps"). Answers stream in with m:ss.s timecodes; while it works, a purple agent playhead marks where it's cutting.
+3. When a turn makes edits, a **proposal card** lists every change in plain English, and the timeline shows the same ghost preview as Rough Cut: red hatch over what would go, a green strip showing the result. Your sequence has not changed yet — keep editing if you like (that voids the proposal).
+4. **Accept** commits the whole batch as ONE undo step (`Ctrl+Z` takes it all back); **Discard** drops it without a trace. Sending a new instruction supersedes an unreviewed proposal.
 
-The copilot only knows what the panel headers know: if transcription hasn't finished, it will say so rather than guess.
+Under the hood the copilot uses the same edit operations as your keyboard — blade, ripple delete, trim, roll, slip, move, transitions — each validated against the timeline's invariants before it can even be proposed. There is no export tool: only you can ship. If transcription hasn't finished, it will say so rather than guess.
 
 ### Burned-in captions — live from the transcript
 

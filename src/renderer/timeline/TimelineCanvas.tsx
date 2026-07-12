@@ -9,6 +9,7 @@ import {
   type WheelEvent
 } from 'react'
 import { FLICKS_PER_SECOND, flicksPerFrame } from '../../shared/timecode'
+import { diffDeletions } from '../../shared/timeline/diff'
 import { sequenceDuration, spineIndexOf } from '../../shared/timeline/model'
 import { itemAtTime, spineStartIndex } from '../../shared/timeline/magnetic'
 import { collectSnapPoints, snapTime } from '../../shared/timeline/snap'
@@ -96,11 +97,14 @@ export function TimelineCanvas(): ReactNode {
       zoomPxPerSec,
       silenceRanges,
       roughCut,
-      pendingProposal
+      pendingProposal,
+      agentPlayheadFlicks
     } = useTimelineStore.getState()
     const canvas = canvasRef.current
     if (sequence === null || canvas === null) return null
-    // ghost strip: the proposed spine's clip layout in proposed time
+    // ghost overlay: hatch = base content that would vanish (generic id/media
+    // diff — works for rough-cut ranges and copilot op batches alike); strip =
+    // the proposed spine's clip layout in proposed time
     let proposal: RenderState['proposal'] = null
     if (pendingProposal !== null && pendingProposal.baseSequence === sequence) {
       const ghostClips: { fromFlicks: number; toFlicks: number }[] = []
@@ -111,7 +115,10 @@ export function TimelineCanvas(): ReactNode {
         }
         position += item.durationFlicks
       }
-      proposal = { deletions: pendingProposal.ranges, ghostClips }
+      proposal = {
+        deletions: diffDeletions(sequence, pendingProposal.proposedSequence),
+        ghostClips
+      }
     }
     return {
       sequence,
@@ -119,6 +126,7 @@ export function TimelineCanvas(): ReactNode {
       snapshot: snapshotRef.current,
       silenceRanges,
       proposal,
+      agentPlayheadFlicks,
       // badges only while the rough cut is still the sequence's top of history
       roughCutCuts:
         roughCut !== null && roughCut.resultSequence === sequence ? roughCut.cuts : null,
