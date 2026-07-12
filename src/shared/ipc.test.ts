@@ -122,6 +122,35 @@ describe('sequenceSchema role round-trip', () => {
     expect(result.success).toBe(false)
   })
 
+  it('preserves fx duck ranges through parse', () => {
+    const sequence: Sequence = {
+      ...base,
+      connected: [
+        {
+          ...base.connected[0],
+          fx: {
+            posX: 0,
+            posY: 0,
+            scale: 100,
+            rotation: 0,
+            opacity: 100,
+            exposure: 0,
+            contrast: 1,
+            saturation: 1,
+            temperature: 0,
+            fadeInFlicks: 0,
+            fadeOutFlicks: 0,
+            volumeDb: 0,
+            pan: 0,
+            duck: { ranges: [{ fromClipFlicks: 100, toClipFlicks: 5_000 }], amountDb: -12 }
+          }
+        }
+      ]
+    }
+    const parsed = sequenceSchema.parse(sequence)
+    expect(parsed).toEqual(sequence)
+  })
+
   it('preserves markers through parse', () => {
     const sequence: Sequence = {
       ...base,

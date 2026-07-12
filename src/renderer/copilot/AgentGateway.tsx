@@ -6,6 +6,7 @@ import type { LibrarySnapshot } from '../../shared/types'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 import { ensureTranscripts } from '../transcript/cache'
+import { DUCK_AMOUNT_DB, planDucking } from '../silence/ducking'
 import { buildCopilotContext } from './context'
 import { ensureEnvelopes } from './envelopes'
 import { scoreFlow } from './flow-score'
@@ -133,6 +134,48 @@ async function handleAgentTool(
         results.push(`${op.name}: ${outcome.resultText}`)
         if (outcome.summary !== null) {
           executed.push({ name: op.name, input: op.input, summary: outcome.summary })
+        }
+      }
+      return presentProposal(base, scratch, executed, results, lastOutcome)
+    }
+    case 'duck_music': {
+      const record = input as { amount_db?: unknown } | null
+      const amount =
+        typeof record?.amount_db === 'number' && Number.isFinite(record.amount_db)
+          ? Math.min(0, Math.max(-60, record.amount_db))
+          : DUCK_AMOUNT_DB
+      await waitForGestureEnd()
+      const current = useTimelineStore.getState()
+      const base = current.sequence
+      if (base === null) return { error: 'no project is open in the editor' }
+      if (current.pendingProposal !== null) {
+        return { error: 'a proposal is already awaiting human review — poll get_status' }
+      }
+      const envelopes = await ensureEnvelopes(base, snapshot)
+      const plans = planDucking(base, envelopes)
+      if (plans.length === 0) {
+        return {
+          error:
+            'no music-role clip overlaps dialogue speech — tag the bed with set_role, or audio analysis may still be running'
+        }
+      }
+      let scratch = base
+      const executed: { name: string; input: unknown; summary: string }[] = []
+      const results: string[] = []
+      for (const plan of plans) {
+        const duckInput = {
+          clip_id: plan.clipId,
+          amount_db: amount,
+          ranges: plan.ranges.map((range) => ({
+            from_sec: range.fromClipFlicks / FLICKS_PER_SECOND,
+            to_sec: range.toClipFlicks / FLICKS_PER_SECOND
+          }))
+        }
+        const outcome = executeEditTool(scratch, 'duck_clip', duckInput)
+        scratch = outcome.next
+        results.push(`${plan.clipId}: ${outcome.resultText}`)
+        if (outcome.summary !== null) {
+          executed.push({ name: 'duck_clip', input: duckInput, summary: outcome.summary })
         }
       }
       return presentProposal(base, scratch, executed, results, lastOutcome)

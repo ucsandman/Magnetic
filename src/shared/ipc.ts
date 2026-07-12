@@ -67,7 +67,15 @@ const clipFxSchema = z.object({
   volumeDb: z.number().default(0),
   pan: z.number().default(0),
   // keyframe animation tracks (z.object strips unknown keys, so kf must be declared)
-  kf: z.partialRecord(animatableParamSchema, z.array(keyframeSchema)).optional()
+  kf: z.partialRecord(animatableParamSchema, z.array(keyframeSchema)).optional(),
+  duck: z
+    .object({
+      ranges: z.array(
+        z.object({ fromClipFlicks: z.number().nonnegative(), toClipFlicks: z.number().positive() })
+      ),
+      amountDb: z.number()
+    })
+    .optional()
 })
 
 const titleDataSchema = z.object({

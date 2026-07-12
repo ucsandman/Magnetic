@@ -50,6 +50,8 @@ export interface ClipRect {
   loopSourceFlicks?: number
   /** Effective audio role; null for gaps/titles. Drives the role stripe + mute dim. */
   role?: ClipRole | null
+  /** Auto-duck dips, clip-relative flicks — drawn as darker bands on the bed. */
+  duckRanges?: { fromClipFlicks: number; toClipFlicks: number }[]
 }
 
 export interface DragGhost {
@@ -403,6 +405,9 @@ export function computeClipRects(state: RenderState): ClipRect[] {
       role: effectiveRole(cc)
     }
     if (cc.loop === true) rect.loopSourceFlicks = cc.sourceDurationFlicks
+    if (cc.fx?.duck !== undefined && cc.fx.duck.ranges.length > 0) {
+      rect.duckRanges = cc.fx.duck.ranges
+    }
     rects.push(rect)
   }
   return rects
@@ -580,6 +585,17 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
       rect.durationFlicks,
       rect.isGap
     )
+  }
+
+  // ducking dips: darker bands where a bed's gain is pulled under dialogue
+  for (const rect of rects) {
+    if (rect.duckRanges === undefined || rect.durationFlicks <= 0) continue
+    ctx.fillStyle = '#00000066'
+    for (const range of rect.duckRanges) {
+      const x1 = rect.x + (range.fromClipFlicks / rect.durationFlicks) * rect.w
+      const x2 = rect.x + (range.toClipFlicks / rect.durationFlicks) * rect.w
+      ctx.fillRect(x1, rect.y + 3, Math.max(1, x2 - x1), rect.h - 6)
+    }
   }
 
   // role stripes (music/sfx tags) + mute dimming — dialogue stays unmarked

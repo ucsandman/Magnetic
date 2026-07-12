@@ -104,6 +104,17 @@ const TOOLS = [
     }
   },
   {
+    name: 'duck_music',
+    description:
+      'Auto-duck: find where dialogue is speaking and propose gain dips on every music-role bed under it (default −12 dB). Presented as a ghost-diff proposal — poll get_status for the verdict.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        amount_db: { type: 'number', description: 'Negative dip depth, defaults to -12' }
+      }
+    }
+  },
+  {
     name: 'normalize_loudness',
     description:
       'Measure each target clip’s source loudness (EBU R128) and propose per-clip volume changes that bring them to the target LUFS (default −14, the streaming standard). Targets every dialogue-role clip unless clip_ids narrows it. Presented as a ghost-diff proposal like any edit — poll get_status for the verdict.',

@@ -68,6 +68,65 @@ describe('gainAutomationFor', () => {
   })
 })
 
+describe('gainAutomationFor ducking', () => {
+  it('dips to the duck gain across the range with lead-in/out ramps', () => {
+    const points = gainAutomationFor({
+      startCtxTime: 0,
+      durationSec: 20,
+      fadeInSec: 0,
+      fadeOutSec: 0,
+      volumeDb: 0,
+      duckDb: -12,
+      ducks: [{ fromSec: 5, toSec: 10 }]
+    })
+    const dipped = Math.pow(10, -12 / 20)
+    const at = (t: number): number => points.find((p) => p.atCtxTime === t)!.value
+    expect(at(5 - 0.25)).toBeCloseTo(1, 5) // ramp starts DUCK_RAMP_SEC before
+    expect(at(5)).toBeCloseTo(dipped, 5)
+    expect(at(10)).toBeCloseTo(dipped, 5)
+    expect(at(10 + 0.25)).toBeCloseTo(1, 5)
+    // sorted ascending — required by linearRampToValueAtTime
+    const times = points.map((p) => p.atCtxTime)
+    expect(times).toEqual([...times].sort((a, b) => a - b))
+  })
+
+  it('composes with the volume plateau (dip multiplies the clip gain)', () => {
+    const points = gainAutomationFor({
+      startCtxTime: 0,
+      durationSec: 20,
+      fadeInSec: 0,
+      fadeOutSec: 0,
+      volumeDb: -6,
+      duckDb: -12,
+      ducks: [{ fromSec: 5, toSec: 10 }]
+    })
+    const expected = Math.pow(10, -6 / 20) * Math.pow(10, -12 / 20)
+    const mid = points.find((p) => p.atCtxTime === 5)!
+    expect(mid.value).toBeCloseTo(expected, 5)
+  })
+
+  it('clamps duck ramps at the clip edges', () => {
+    const points = gainAutomationFor({
+      startCtxTime: 0,
+      durationSec: 8,
+      fadeInSec: 0,
+      fadeOutSec: 0,
+      volumeDb: 0,
+      duckDb: -12,
+      ducks: [{ fromSec: 0, toSec: 8 }]
+    })
+    const dipped = Math.pow(10, -12 / 20)
+    expect(points[0].atCtxTime).toBe(0)
+    expect(points[0].value).toBeCloseTo(dipped, 5)
+    expect(points[points.length - 1].atCtxTime).toBeLessThanOrEqual(8)
+  })
+
+  it('without ducks the envelope is unchanged', () => {
+    const args = { startCtxTime: 3, durationSec: 2, fadeInSec: 0, fadeOutSec: 0, volumeDb: 0 }
+    expect(gainAutomationFor(args)).toEqual([{ atCtxTime: 3, value: 1 }])
+  })
+})
+
 describe('clipGainPoints', () => {
   it('returns the input unchanged when no point precedes atTime', () => {
     const points = [

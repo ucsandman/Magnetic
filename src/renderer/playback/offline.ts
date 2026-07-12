@@ -294,7 +294,12 @@ function connectChunkJobChain(
       durationSec: env.durSec,
       fadeInSec: flicksToSeconds(job.fx.fadeInFlicks),
       fadeOutSec: flicksToSeconds(job.fx.fadeOutFlicks),
-      volumeDb: job.fx.volumeDb
+      volumeDb: job.fx.volumeDb,
+      ducks: job.fx.duck?.ranges.map((range) => ({
+        fromSec: flicksToSeconds(range.fromClipFlicks),
+        toSec: flicksToSeconds(range.toClipFlicks)
+      })),
+      duckDb: job.fx.duck?.amountDb
     }),
     0
   )

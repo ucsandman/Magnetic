@@ -144,7 +144,12 @@ export function connectJobChain(
     durationSec: env.durSec,
     fadeInSec: flicksToSeconds(job.fx.fadeInFlicks),
     fadeOutSec: flicksToSeconds(job.fx.fadeOutFlicks),
-    volumeDb: job.fx.volumeDb
+    volumeDb: job.fx.volumeDb,
+    ducks: job.fx.duck?.ranges.map((range) => ({
+      fromSec: flicksToSeconds(range.fromClipFlicks),
+      toSec: flicksToSeconds(range.toClipFlicks)
+    })),
+    duckDb: job.fx.duck?.amountDb
   })
   gain.gain.setValueAtTime(points[0].value, Math.max(0, points[0].atCtxTime))
   for (const point of points.slice(1)) {

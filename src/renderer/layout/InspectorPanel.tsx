@@ -14,6 +14,8 @@ import {
 import { DEFAULT_CAPTIONS, DEFAULT_FX, removeMarker, updateMarker } from '../../shared/timeline/ops'
 import { adjacentKeyframeTime, evaluateFxAt, upsertKeyframe } from '../../shared/timeline/fx-eval'
 import { buildCues } from '../captions/cues'
+import { ensureEnvelopes } from '../copilot/envelopes'
+import { DUCK_AMOUNT_DB, planDucking } from '../silence/ducking'
 import { toSrt, toVtt } from '../captions/format'
 import { ensureTranscripts } from '../transcript/cache'
 import { projectTranscript } from '../transcript/projection'
@@ -352,6 +354,11 @@ export function InspectorPanel(): ReactNode {
                 Normalize to −14 LUFS
               </button>
             )}
+            {connectedClip !== undefined &&
+              titleData === undefined &&
+              effectiveRole(connectedClip) === 'music' && (
+                <DuckControls clipId={selectedId} sequence={sequence} fx={fx} />
+              )}
           </>
         )}
         {activeTab === 'title' && titleData !== undefined && (
@@ -360,6 +367,51 @@ export function InspectorPanel(): ReactNode {
         {activeTab === 'captions' && <CaptionFields sequence={sequence} />}
       </div>
     </Panel>
+  )
+}
+
+/** Auto-duck buttons for a selected music-role bed. */
+function DuckControls({
+  clipId,
+  sequence,
+  fx
+}: {
+  clipId: string
+  sequence: Sequence
+  fx: ClipFx
+}): ReactNode {
+  const { snapshot } = useLibrary()
+  const ducked = fx.duck !== undefined && fx.duck.ranges.length > 0
+  return (
+    <>
+      <button
+        type="button"
+        data-testid="duck-music"
+        title="Find where dialogue is speaking and dip this bed −12 dB under it"
+        onClick={() => {
+          if (snapshot === null) return
+          void ensureEnvelopes(sequence, snapshot).then((envelopes) => {
+            const plans = planDucking(sequence, envelopes).filter((plan) => plan.clipId === clipId)
+            useTimelineStore.getState().applyDuckPlans(plans, DUCK_AMOUNT_DB)
+          })
+        }}
+      >
+        Duck under dialogue (−12 dB)
+      </button>
+      {ducked && (
+        <button
+          type="button"
+          data-testid="duck-clear"
+          onClick={() => {
+            const cleared = { ...fx }
+            delete cleared.duck
+            useTimelineStore.getState().setFx(clipId, cleared)
+          }}
+        >
+          Clear ducking ({fx.duck!.ranges.length} dip{fx.duck!.ranges.length === 1 ? '' : 's'})
+        </button>
+      )}
+    </>
   )
 }
 

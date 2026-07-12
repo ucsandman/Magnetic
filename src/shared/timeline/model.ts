@@ -65,6 +65,12 @@ export interface ClipFx {
   volumeDb: number
   /** −1 left .. +1 right. */
   pan: number
+  /**
+   * Auto-ducking dips, CLIP-relative (offsets from the clip's start — looped
+   * beds wrap media time, so media anchoring can't work here). Recomputable
+   * in one click; each range dips the gain by amountDb with a short ramp.
+   */
+  duck?: { ranges: { fromClipFlicks: number; toClipFlicks: number }[]; amountDb: number }
   /** Optional keyframe tracks per animatable param, sorted by atMediaFlicks. */
   kf?: Partial<Record<AnimatableParam, Keyframe[]>>
 }

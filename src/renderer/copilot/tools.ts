@@ -82,6 +82,11 @@ const SCHEMAS = {
   }),
   set_role: z.strictObject({ clip_id: z.string(), role: z.enum(ROLE_VALUES) }),
   set_volume: z.strictObject({ clip_id: z.string(), volume_db: z.number().min(-96).max(12) }),
+  duck_clip: z.strictObject({
+    clip_id: z.string(),
+    amount_db: z.number().min(-60).max(0),
+    ranges: z.array(z.strictObject({ from_sec: z.number().min(0), to_sec: z.number().positive() }))
+  }),
   add_marker: z.strictObject({
     at_sec: z.number().min(0),
     text: z.string(),
@@ -199,6 +204,27 @@ export const EDIT_TOOLS: Anthropic.Tool[] = [
         role: { type: 'string', enum: ['dialogue', 'music', 'sfx'] }
       },
       required: ['clip_id', 'role']
+    }
+  },
+  {
+    name: 'duck_clip',
+    description:
+      'Set ducking dips on a clip (usually a music bed): the gain drops by amount_db across each range (seconds RELATIVE TO THE CLIP START, not sequence time), with short ramps. An empty ranges array clears ducking. Tip: dip music wherever dialogue is speaking.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clip_id: { type: 'string' },
+        amount_db: { type: 'number', description: 'Negative dip, e.g. -12' },
+        ranges: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { from_sec: { type: 'number' }, to_sec: { type: 'number' } },
+            required: ['from_sec', 'to_sec']
+          }
+        }
+      },
+      required: ['clip_id', 'amount_db', 'ranges']
     }
   },
   {
@@ -326,6 +352,35 @@ export function executeEditTool(scratch: Sequence, name: string, input: unknown)
       result = setClipRole(scratch, { clipId: a.clip_id, role: a.role })
       summary = `Tagged ${a.clip_id} as ${a.role}`
       timeRefFlicks = null
+      break
+    }
+    case 'duck_clip': {
+      const a = args as z.infer<(typeof SCHEMAS)['duck_clip']>
+      const target =
+        scratch.spine.find((item) => item.id === a.clip_id && item.kind === 'clip') ??
+        scratch.connected.find((cc) => cc.id === a.clip_id)
+      if (target === undefined || !('assetId' in target)) {
+        return failure(scratch, `unknown-id: no clip "${a.clip_id}"`)
+      }
+      const fx = { ...DEFAULT_FX, ...(target.fx ?? {}) }
+      const duck =
+        a.ranges.length === 0
+          ? undefined
+          : {
+              ranges: a.ranges.map((range) => ({
+                fromClipFlicks: sec(range.from_sec),
+                toClipFlicks: sec(range.to_sec)
+              })),
+              amountDb: a.amount_db
+            }
+      const nextFx = { ...fx, duck }
+      if (duck === undefined) delete nextFx.duck
+      result = setClipFx(scratch, { clipId: a.clip_id, fx: nextFx })
+      summary =
+        duck === undefined
+          ? `Cleared ducking on ${a.clip_id}`
+          : `Ducked ${a.clip_id} by ${Math.abs(a.amount_db).toFixed(0)} dB across ${a.ranges.length} range(s)`
+      timeRefFlicks = a.ranges.length > 0 ? sec(a.ranges[0].from_sec) : null
       break
     }
     case 'add_marker': {

@@ -64,6 +64,7 @@ import {
 } from '../../shared/timeline/select'
 import { touchedClipIds } from '../../shared/timeline/diff'
 import { DEFAULT_TARGET_LUFS, normalizeGainDb } from '../../shared/loudness'
+import type { DuckPlan } from '../silence/ducking'
 import { UndoStack, type Op } from '../../shared/timeline/undo'
 import { validateSequence } from '../../shared/timeline/validate'
 import {
@@ -131,6 +132,8 @@ interface TimelineStore {
    * target LUFS (one undo group). Returns how many clips were adjusted.
    */
   normalizeLoudness(clipIds: string[], targetLufs?: number): Promise<number>
+  /** Write computed duck ranges onto their clips as fx.duck (one undo group). */
+  applyDuckPlans(plans: DuckPlan[], amountDb: number): void
   /** Replace the set of muted roles (mute/solo buttons; undoable). */
   setRoleMutes(roles: ClipRole[]): void
   setTitle(clipId: string, titleData: TitleData): void
@@ -461,6 +464,24 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
           color: 'blue'
         })
       )
+    },
+
+    applyDuckPlans(plans, amountDb) {
+      const { sequence } = get()
+      if (stack === null || sequence === null || plans.length === 0) return
+      stack.beginGroup()
+      for (const plan of plans) {
+        const cc = sequence.connected.find((candidate) => candidate.id === plan.clipId)
+        if (cc === undefined) continue
+        stack.apply((seq) =>
+          setClipFx(seq, {
+            clipId: plan.clipId,
+            fx: { ...DEFAULT_FX, ...(cc.fx ?? {}), duck: { ranges: plan.ranges, amountDb } }
+          })
+        )
+      }
+      stack.endGroup()
+      syncFromStack()
     },
 
     async normalizeLoudness(clipIds, targetLufs = DEFAULT_TARGET_LUFS) {
