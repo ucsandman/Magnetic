@@ -92,6 +92,13 @@ You can also drag a clip from the browser straight onto the timeline.
 - `N` toggles **snapping** — drags and trims click onto clip edges and the playhead. Turn it off for sub-frame nudging.
 - Drag a clip's body to rearrange the spine; the other clips shuffle around it magnetically.
 
+### Markers
+
+- Press `M` and a **marker** drops on the clip under the playhead — a colored diamond in the ruler. Markers anchor to the _media_, so blading, trimming, and rearranging never lose them; deleting the footage that carries one removes it (undoably).
+- With the playhead on a marker (click its diamond — the ruler seeks), the Inspector shows a **Marker** section: type a note ("tighten this intro"), pick a color (blue/green/orange/red — use them as your own status code), or delete it.
+- `Ctrl+;` / `Ctrl+'` hop the playhead between markers.
+- Agents see your markers (with ids) in their timeline context and can drop their own — an agent flagging "possible jump cut at 1:32" arrives as a marker you can click, not a paragraph you have to parse.
+
 ### Copy, paste, duplicate
 
 - `Ctrl+C` copies the selected clips (spine and connected — effects, keyframes, and detached-audio flags ride along). `Ctrl+V` **insert-pastes** at the playhead; `Ctrl+Shift+V` pastes the clips **connected** above the spine at the playhead. Either paste is a single undo step.
@@ -144,6 +151,21 @@ Select a timeline clip and the Inspector (toggle with `Ctrl+4`) shows its tabs:
 
 Everything applies non-destructively and exports exactly as previewed.
 
+### Roles: Dialogue / Music / SFX
+
+Every audible clip carries a **role** — the Audio tab shows the picker. Spine clips default to Dialogue; looped beds auto-tag as Music; tag SFX yourself. Two things run on roles:
+
+- The timeline toolbar's **Dia / Mus / SFX** buttons mute a whole role across playback _and export_ — solo the dialogue while you cut, silence the bed while you check a mix. Muted roles persist with the project and are one undo step.
+- Non-dialogue clips get a colored stripe on the timeline (amber = music, teal = SFX) so the mix reads at a glance.
+
+### Loudness: one click to broadcast-even volume
+
+Sources never match — the interview is quiet, the B-roll is hot. Select a clip, open the Audio tab, and click **Normalize to −14 LUFS**: Magnetic measures the clip's source loudness (EBU R128, cached per asset) and sets its volume so it plays at the streaming standard. Do it to every talking clip and the volume jumps between sources disappear. One undo step.
+
+### Auto-ducking: music that gets out of the way
+
+Select a music-role clip and click **Duck under dialogue (−12 dB)**: Magnetic finds where speech is actually happening (same analysis as silence detection) and dips the bed under it with smooth quarter-second ramps, merging across short pauses so the music never pumps. The dips draw as darker bands on the bed, apply identically in playback and export, and **Clear ducking** removes them. Re-run it any time the cut changes — the plan recomputes from the current timeline.
+
 ### Keyframing: animate a parameter over time
 
 Every Video and Color parameter can be animated with keyframes:
@@ -164,7 +186,7 @@ Magnetic transcribes speech **locally** with whisper.cpp (nothing leaves your ma
 1. Leave **Auto-transcribe** checked (sidebar) so imports transcribe in the background — or right-click any clip with audio and choose transcribe.
 2. Edit the talking clips into the timeline, then open the **Transcript** tab (top of the browser) or press `Ctrl+Shift+T`. The panel shows the transcript of _your timeline_, assembled in edit order.
 3. **Click any word** — the playhead jumps to it. This is the fastest way to navigate an interview.
-4. **Select a sentence and press `Delete`** — the corresponding video is ripple-deleted from the timeline, frame-accurately. One `Ctrl+Z` restores both the text and the video.
+4. **Select a sentence and cut it** — drag across the words (or click one end and drag to the other) and press `Delete` or the **Cut selection** button: the corresponding video is ripple-deleted from the timeline, frame-accurately. One `Ctrl+Z` restores both the text and the video.
 5. **Remove all fillers** — every _um_, _uh_, _like_, _you know_ is highlighted; one click cuts them all out of the video at once (and one undo brings them all back).
 6. **Search** the transcript to find a phrase and jump straight to it.
 
@@ -223,11 +245,11 @@ Magnetic can act as an MCP server: Claude Code, Claude Desktop, or any MCP clien
 
 1. Tick **Agent Access** in the browser sidebar. Magnetic starts a loopback-only connection (127.0.0.1, never the network) protected by a token — reveal or rotate it right there. Unticking severs every connection instantly.
 2. Connect Claude Code from your project folder: `claude mcp add magnetic -- node scripts/magnetic-mcp.mjs` — the bridge finds the running editor automatically.
-3. The agent gets four tools: `read_timeline` (your cut as text), `check_flow` (the same self-check score), `get_status` (including whether you accepted or discarded its last proposal), and `propose_edits` (the full edit grammar, times in seconds).
+3. The agent gets seven tools: `read_timeline` (your cut as text — clips, roles, markers, dead air, transcript), `check_flow` (the same self-check score), `get_status` (including whether you accepted or discarded its last proposal), `propose_edits` (the full edit grammar — blade/trim/move/delete plus set_role, set_volume, duck_clip, add_marker — times in seconds), and three high-level moves: `cut_words` (give it a spoken quote, it proposes the cut — ambiguous quotes come back with timestamps to pick from), `duck_music` (plan dips under all dialogue), and `normalize_loudness` (measure and level every dialogue clip).
 
 Everything you know from the Copilot applies: ghost hatch + green preview strip, one undo step per accepted batch, per-change checkboxes in the Copilot tab, attribution dots, and the flow score.
 
-You are never interrupted: if an agent proposes while you're mid-drag, the request parks ("⚡ 1 agent request queued — waiting for your gesture to finish") and is computed against your timeline as it stands *after* the drag.
+You are never interrupted: if an agent proposes while you're mid-drag, the request parks ("⚡ 1 agent request queued — waiting for your gesture to finish") and is computed against your timeline as it stands _after_ the drag.
 
 ### Burned-in captions — live from the transcript
 
