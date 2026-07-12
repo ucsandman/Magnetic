@@ -4,8 +4,7 @@ import {
   evaluateFxAt,
   evaluateTrack,
   keyframeMarkerTimes,
-  upsertKeyframe
-,
+  upsertKeyframe,
   rebaseKeyframes
 } from './fx-eval'
 import { DEFAULT_FX } from './ops'

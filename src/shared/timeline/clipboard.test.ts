@@ -159,9 +159,28 @@ describe('pasteSteps regressions', () => {
     // spine A [0,5), spine B [10,15) (5-frame hole collapses on paste),
     // child attached 2 frames into B => must land 2 frames into pasted B.
     const payload = [
-      { assetId: 'a', mediaInFlicks: 0, durationFlicks: 5 * F, sourceDurationFlicks: 600 * F, relOffsetFlicks: 0 },
-      { assetId: 'b', mediaInFlicks: 0, durationFlicks: 5 * F, sourceDurationFlicks: 600 * F, relOffsetFlicks: 10 * F },
-      { assetId: 'c', mediaInFlicks: 0, durationFlicks: 2 * F, sourceDurationFlicks: 600 * F, lane: 1, relOffsetFlicks: 12 * F }
+      {
+        assetId: 'a',
+        mediaInFlicks: 0,
+        durationFlicks: 5 * F,
+        sourceDurationFlicks: 600 * F,
+        relOffsetFlicks: 0
+      },
+      {
+        assetId: 'b',
+        mediaInFlicks: 0,
+        durationFlicks: 5 * F,
+        sourceDurationFlicks: 600 * F,
+        relOffsetFlicks: 10 * F
+      },
+      {
+        assetId: 'c',
+        mediaInFlicks: 0,
+        durationFlicks: 2 * F,
+        sourceDurationFlicks: 600 * F,
+        lane: 1,
+        relOffsetFlicks: 12 * F
+      }
     ]
     const steps = pasteSteps(payload, 100 * F, 'insert', newId)
     const connect = steps.find((step) => step.kind === 'connect')
