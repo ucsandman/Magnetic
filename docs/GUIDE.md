@@ -191,6 +191,16 @@ The **Rough Cut** tab merges dead-air and filler-word detection into a single pl
 
 The review window stays open until you edit something else or click **Done**; the AI badges are session-only provenance, never saved into the project. Every proposed sequence is checked against the timeline's legality invariants before it can be offered. Filler detection needs a transcript, so on freshly imported clips give transcription a moment to finish first.
 
+### Copilot — ask questions about your cut
+
+The **Copilot** tab is a read-only editing advisor: it can see the open sequence (clips and timing), the detected dead air, and the transcript — and nothing else. It cannot change the timeline.
+
+1. First open asks for your Anthropic API key (get one at console.anthropic.com). It's stored in the app's settings on this machine, sent only to api.anthropic.com, and never logged. Change it later with the **Key…** button.
+2. Ask about the cut in plain language: "what happens in the first 30 seconds?", "where does it drag?", "which takes mention the launch date?" Answers stream in with m:ss.s timecodes you can cross-check on the timeline.
+3. Suggestions are advice, not actions — the copilot tells you *what* to cut and *where*; you (or the Rough Cut tab) do the cutting.
+
+The copilot only knows what the panel headers know: if transcription hasn't finished, it will say so rather than guess.
+
 ### Burned-in captions — live from the transcript
 
 Captions are never clips: they derive **live** from the transcript of your current cut, so every blade, trim, ripple, or transcript edit updates them instantly — there is nothing to re-sync, ever.

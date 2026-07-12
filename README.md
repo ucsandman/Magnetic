@@ -50,7 +50,8 @@ Magnetic timeline · WebCodecs/WebGL2 playback · edit-by-transcript · auto sil
 - **Loop to fill** — loop a connected music bed to the end of the spine in one action; seam ticks on the timeline, whole-bed fade envelope, one undo step
 - **Edit-by-transcript** — local whisper.cpp transcription, word-click seek, select-text-and-delete-to-cut, filler-word removal, transcript search
 - **Auto silence removal** — background audio analysis, tunable dead-air detection with timeline preview, one-click jump-cuts, one-step undo
-- **Rough Cut** — one button merges silence + filler detection into a single pass (one aggressiveness slider) and ghost-renders it before anything commits: red hatched strikethrough over the cuts, a green preview strip showing the result, Accept lands it as one undo step, Discard leaves zero history; then review each AI-badged cut on the ruler and reject individual cuts spell-checker style; the first slices of the human+agent co-editing roadmap (`docs/agent-copilot-vision.md`)
+- **Rough Cut** — one button merges silence + filler detection into a single pass (one aggressiveness slider) and ghost-renders it before anything commits: red hatched strikethrough over the cuts, a green preview strip showing the result, Accept lands it as one undo step, Discard leaves zero history; then review each AI-badged cut on the ruler and reject individual cuts spell-checker style
+- **Copilot (read-only advisor)** — chat with Claude about the open cut: it sees the clips, detected dead air, and transcript, answers with sequence timecodes, and structurally cannot edit (no tools declared); bring your own Anthropic API key, stored in app settings and never logged — with Rough Cut, the first slices of the human+agent co-editing roadmap (`docs/agent-copilot-vision.md`)
 - **Captions** — burned-in captions derived live from the transcript (pop-in / karaoke / block presets); SRT/VTT sidecar export
 
 ### Finish & export

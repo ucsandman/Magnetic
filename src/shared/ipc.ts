@@ -223,8 +223,11 @@ export interface MagneticApi {
   captionsPickDestination(format: 'srt' | 'vtt'): Promise<string | null>
   /** Write a serialized SRT/VTT sidecar to the given path. */
   captionsWriteSidecar(destination: string, content: string): Promise<void>
-  getSettings(): Promise<{ autoTranscribe: boolean }>
-  setSettings(settings: { autoTranscribe: boolean }): Promise<void>
+  getSettings(): Promise<{ autoTranscribe: boolean; anthropicApiKey: string | null }>
+  setSettings(settings: {
+    autoTranscribe?: boolean
+    anthropicApiKey?: string | null
+  }): Promise<void>
   /** Relink a missing asset via the OS file picker (duration must match). */
   relinkAsset(assetId: string): Promise<void>
   onLibraryChanged(cb: (snapshot: import('./types').LibrarySnapshot) => void): () => void

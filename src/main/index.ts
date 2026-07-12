@@ -21,7 +21,12 @@ import {
   relinkAsset,
   relinkViaDialog
 } from './app-state'
-import { getAutoTranscribe, setAutoTranscribe } from './project-io/library'
+import {
+  getAnthropicApiKey,
+  getAutoTranscribe,
+  setAnthropicApiKey,
+  setAutoTranscribe
+} from './project-io/library'
 
 // E2E launches must not share localStorage/caches with each other or with the
 // real profile — isolate userData next to the per-test library directory.
@@ -86,8 +91,14 @@ app.whenReady().then(async () => {
     ensurePcm: (assetId) => ensurePcmUrl(assetId),
     ensureProxy: (assetId) => ensureProxyUrl(assetId),
     transcribe: (assetId) => enqueueTranscription(assetId),
-    getSettings: () => ({ autoTranscribe: getAutoTranscribe() }),
-    setSettings: (settings) => setAutoTranscribe(settings.autoTranscribe),
+    getSettings: () => ({
+      autoTranscribe: getAutoTranscribe(),
+      anthropicApiKey: getAnthropicApiKey()
+    }),
+    setSettings: (settings) => {
+      if (settings.autoTranscribe !== undefined) setAutoTranscribe(settings.autoTranscribe)
+      if (settings.anthropicApiKey !== undefined) setAnthropicApiKey(settings.anthropicApiKey)
+    },
     relink: (assetId) => relinkViaDialog(assetId),
     relinkPath: (assetId, path) => relinkAsset(assetId, path)
   })

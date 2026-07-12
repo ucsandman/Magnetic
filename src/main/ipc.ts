@@ -75,8 +75,8 @@ export interface IpcDeps {
   ensurePcm(assetId: string): Promise<string | null>
   ensureProxy(assetId: string): Promise<string>
   transcribe(assetId: string): void
-  getSettings(): { autoTranscribe: boolean }
-  setSettings(settings: { autoTranscribe: boolean }): void
+  getSettings(): { autoTranscribe: boolean; anthropicApiKey: string | null }
+  setSettings(settings: { autoTranscribe?: boolean; anthropicApiKey?: string | null }): void
   relink(assetId: string): Promise<void>
   relinkPath(assetId: string, path: string): Promise<void>
 }
@@ -120,9 +120,18 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
 
   handleValidated(IPC.settingsGet, z.undefined(), async () => deps.getSettings())
 
-  handleValidated(IPC.settingsSet, z.object({ autoTranscribe: z.boolean() }), async (payload) => {
-    deps.setSettings(payload)
-  })
+  handleValidated(
+    IPC.settingsSet,
+    z
+      .strictObject({
+        autoTranscribe: z.boolean().optional(),
+        anthropicApiKey: z.string().nullable().optional()
+      })
+      .refine((payload) => Object.keys(payload).length > 0, 'empty settings payload'),
+    async (payload) => {
+      deps.setSettings(payload)
+    }
+  )
 
   handleValidated(IPC.mediaEnsureProxy, assetIdPayloadSchema, (payload) =>
     deps.ensureProxy(payload.assetId)

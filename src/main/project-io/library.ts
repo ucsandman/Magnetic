@@ -16,6 +16,8 @@ interface LibraryJson {
 interface SettingsJson {
   lastLibraryPath?: string
   autoTranscribe?: boolean
+  /** Anthropic API key for the Copilot advisor. Stored here (userData), never in the renderer's localStorage, never logged. */
+  anthropicApiKey?: string
 }
 
 export function getAutoTranscribe(): boolean {
@@ -24,6 +26,17 @@ export function getAutoTranscribe(): boolean {
 
 export function setAutoTranscribe(enabled: boolean): void {
   writeSettings({ ...readSettings(), autoTranscribe: enabled })
+}
+
+export function getAnthropicApiKey(): string | null {
+  return readSettings().anthropicApiKey ?? null
+}
+
+export function setAnthropicApiKey(key: string | null): void {
+  const settings = { ...readSettings() }
+  if (key === null || key === '') delete settings.anthropicApiKey
+  else settings.anthropicApiKey = key
+  writeSettings(settings)
 }
 
 const AUTOSAVE_DELAY_MS = 500
