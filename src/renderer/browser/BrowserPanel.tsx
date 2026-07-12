@@ -146,6 +146,15 @@ export function BrowserPanel(): ReactNode {
             audioAssets.forEach((candidate) => void window.api.transcribeAsset(candidate.id))
         },
         {
+          id: 'denoise',
+          label: audioAssets.every((candidate) => candidate.denoisedUrl !== undefined)
+            ? 'Clean Up Audio ✓ (redo)'
+            : 'Clean Up Audio',
+          disabled: audioAssets.length === 0,
+          onSelect: () =>
+            audioAssets.forEach((candidate) => void window.api.denoiseAsset(candidate.id))
+        },
+        {
           id: 'relink',
           label: 'Relink',
           disabled: !asset.missing,

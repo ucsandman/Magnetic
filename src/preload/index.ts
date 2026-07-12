@@ -31,6 +31,7 @@ const api: MagneticApi = {
     return () => ipcRenderer.removeListener(IPC.smartExportProgress, listener)
   },
   transcribeAsset: (assetId) => ipcRenderer.invoke(IPC.transcribeRun, { assetId }),
+  denoiseAsset: (assetId) => ipcRenderer.invoke(IPC.mediaDenoise, { assetId }),
   captionsPickDestination: (format) => ipcRenderer.invoke(IPC.captionsPickDestination, { format }),
   captionsWriteSidecar: (destination, content) =>
     ipcRenderer.invoke(IPC.captionsWriteSidecar, { destination, content }),

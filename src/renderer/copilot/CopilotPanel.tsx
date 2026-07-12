@@ -9,6 +9,7 @@ import { ABReview } from './ABReview'
 import { advisorErrorMessage, streamCopilotTurn, type AdvisorTurn } from './agent-runtime'
 import { buildCopilotContext } from './context'
 import { dependencyGroups } from './dependency'
+import { scoreFlow } from './flow-score'
 
 /**
  * Read-only copilot advisor (phase 3): a chat over the open sequence. The
@@ -40,6 +41,7 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
   const { snapshot } = useLibrary()
   const sequence = useTimelineStore((state) => state.sequence)
   const pendingProposal = useTimelineStore((state) => state.pendingProposal)
+  const flowReport = useTimelineStore((state) => state.flowReport)
   const { turns, streaming, error } = useCopilotChat()
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [keyLoaded, setKeyLoaded] = useState(false)
@@ -117,10 +119,18 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
     [groups, uncheckedGroups]
   )
 
+  const publishFlowReport = (): void => {
+    const next = useTimelineStore.getState().sequence
+    if (next === null) return
+    const report = scoreFlow(next, envelopes)
+    useTimelineStore.getState().setFlowReport({ forSequence: next, ...report })
+  }
+
   const acceptSelected = (): void => {
     const store = useTimelineStore.getState()
     if (uncheckedGroups.size === 0) {
       store.acceptProposal()
+      publishFlowReport()
       return
     }
     if (!store.acceptCopilotOps(keptIndices)) {
@@ -129,7 +139,9 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
         .setError(
           'Partial accept failed — those changes could not replay on their own. Try a different selection or accept everything.'
         )
+      return
     }
+    publishFlowReport()
   }
 
   const saveKey = (): void => {
@@ -163,12 +175,17 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
     setQuestion('')
     const controller = new AbortController()
     abortRef.current = controller
+    const flowOf = (scratch: typeof sequence): string => {
+      const report = scoreFlow(scratch, envelopes)
+      return `Flow score ${report.score}/100 — ${report.flags.length} flag(s):\n${report.flags.map((flag) => `- [${(flag.flicks / 705_600_000).toFixed(1)}s] ${flag.kind}: ${flag.message}`).join('\n') || '(none)'}`
+    }
     void streamCopilotTurn({
       apiKey,
       context: contextOf(sequence),
       turns: nextTurns,
       base: sequence,
       contextOf,
+      flowOf,
       signal: controller.signal,
       onDelta: (delta) => {
         const current = useCopilotChat.getState()
@@ -340,6 +357,16 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
                   Discard
                 </button>
               </div>
+            </div>
+          )}
+          {flowReport !== null && flowReport.forSequence === sequence && (
+            <div
+              className={`flow-chip flow-${flowReport.score >= 85 ? 'good' : flowReport.score >= 65 ? 'ok' : 'poor'}`}
+              data-testid="flow-chip"
+              title="Heuristic self-check of the accepted cut — flags are marked on the timeline ruler; click one to jump there"
+            >
+              Flow score {flowReport.score} · {flowReport.flags.length} flag
+              {flowReport.flags.length === 1 ? '' : 's'} on the ruler
             </div>
           )}
           <div className="copilot-input-row">

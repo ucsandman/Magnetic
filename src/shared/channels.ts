@@ -15,6 +15,7 @@ export const IPC = {
   projectSaveSequence: 'project:saveSequence',
   mediaEnsurePcm: 'media:ensurePcm',
   mediaEnsureProxy: 'media:ensureProxy',
+  mediaDenoise: 'media:denoise',
   diagMemory: 'diag:memory',
   exportPickDestination: 'export:pickDestination',
   exportStart: 'export:start',

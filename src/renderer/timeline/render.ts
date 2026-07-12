@@ -82,6 +82,8 @@ export interface RenderState {
   agentPlayheadFlicks: number | null
   /** Clips an accepted AI pass touched this session (corner provenance dot). */
   attributedClipIds: ReadonlySet<string> | null
+  /** Flow self-check flags for the current sequence (ruler markers; click = seek). */
+  flowFlags: { flicks: number; kind: string }[] | null
   playheadFlicks: number
   zoomPxPerSec: number
   scrollX: number
@@ -748,6 +750,28 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
       ctx.moveTo(x - 5, RULER_H - 12)
       ctx.lineTo(x + 5, RULER_H - 12)
       ctx.lineTo(x, RULER_H - 4)
+      ctx.closePath()
+      ctx.fill()
+    }
+  }
+
+  // flow-check flag markers: little orange flags in the ruler; clicking the
+  // ruler already seeks, so clicking a flag jumps to the flagged moment
+  if (state.flowFlags !== null) {
+    for (const flag of state.flowFlags) {
+      const x = timeToX(state, flag.flicks)
+      if (x < -6 || x > state.width + 6) continue
+      ctx.strokeStyle = '#ff9f0a'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(x + 0.5, RULER_H - 2)
+      ctx.lineTo(x + 0.5, RULER_H - 13)
+      ctx.stroke()
+      ctx.fillStyle = '#ff9f0a'
+      ctx.beginPath()
+      ctx.moveTo(x + 0.5, RULER_H - 13)
+      ctx.lineTo(x + 7, RULER_H - 10)
+      ctx.lineTo(x + 0.5, RULER_H - 7)
       ctx.closePath()
       ctx.fill()
     }

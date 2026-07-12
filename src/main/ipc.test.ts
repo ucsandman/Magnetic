@@ -23,6 +23,7 @@ const deps: IpcDeps = {
   ensurePcm: async () => null,
   ensureProxy: async () => 'mfile:///proxy.mp4',
   transcribe: () => {},
+  denoise: () => {},
   getSettings: () => ({ autoTranscribe: true, anthropicApiKey: null }),
   setSettings: () => {},
   relink: async () => {},

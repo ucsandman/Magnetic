@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import type { Transcript } from '../../shared/types'
 import { ABReview } from '../copilot/ABReview'
+import { scoreFlow } from '../copilot/flow-score'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 import { useAssetEnvelopes } from '../silence/use-envelopes'
@@ -24,10 +25,12 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
   const sequence = useTimelineStore((state) => state.sequence)
   const roughCut = useTimelineStore((state) => state.roughCut)
   const pendingProposal = useTimelineStore((state) => state.pendingProposal)
+  const flowReport = useTimelineStore((state) => state.flowReport)
   const [aggressiveness, setAggressiveness] = useState(50)
   const [includeFillers, setIncludeFillers] = useState(true)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [transcripts, setTranscripts] = useState<Map<string, Transcript>>(new Map())
+  const [cleanupVoice, setCleanupVoice] = useState(false)
   const { envelopes, analysisFailures } = useAssetEnvelopes(sequence, snapshot)
 
   useEffect(() => {
@@ -171,6 +174,16 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
               />
               <span className="silence-unit">um, uh, you know…</span>
             </label>
+            <label className="silence-field">
+              <span>Clean up voice</span>
+              <input
+                type="checkbox"
+                data-testid="roughcut-denoise"
+                checked={cleanupVoice}
+                onChange={(event) => setCleanupVoice(event.target.checked)}
+              />
+              <span className="silence-unit">denoise on accept</span>
+            </label>
           </div>
           <div className="silence-summary" data-testid="roughcut-summary">
             {included.length} cut{included.length === 1 ? '' : 's'} · {formatSec(totalFlicks)}{' '}
@@ -275,7 +288,24 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
               className="primary"
               data-testid="roughcut-accept"
               title="Commit the proposed cuts as one undo step"
-              onClick={() => useTimelineStore.getState().acceptProposal()}
+              onClick={() => {
+                const proposed = pendingProposal?.proposedSequence
+                useTimelineStore.getState().acceptProposal()
+                const next = useTimelineStore.getState().sequence
+                if (next !== null) {
+                  useTimelineStore
+                    .getState()
+                    .setFlowReport({ forSequence: next, ...scoreFlow(next, envelopes) })
+                }
+                if (cleanupVoice && proposed !== undefined) {
+                  const assetIds = new Set(
+                    proposed.spine
+                      .filter((item) => item.kind === 'clip')
+                      .map((item) => item.assetId)
+                  )
+                  for (const assetId of assetIds) void window.api.denoiseAsset(assetId)
+                }
+              }}
             >
               Accept
             </button>
@@ -292,6 +322,16 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
       )}
       {reviewing && (
         <>
+          {flowReport !== null && flowReport.forSequence === sequence && (
+            <div
+              className={`flow-chip flow-${flowReport.score >= 85 ? 'good' : flowReport.score >= 65 ? 'ok' : 'poor'}`}
+              data-testid="roughcut-flow-chip"
+              title="Heuristic self-check of the applied pass — flags marked on the ruler"
+            >
+              Flow score {flowReport.score} · {flowReport.flags.length} flag
+              {flowReport.flags.length === 1 ? '' : 's'} on the ruler
+            </div>
+          )}
           <div className="silence-summary" data-testid="roughcut-review-summary">
             Rough cut applied: {roughCut.cuts.length} cut{roughCut.cuts.length === 1 ? '' : 's'} ·{' '}
             {formatSec(roughCut.cuts.reduce((sum, cut) => sum + cut.removedFlicks, 0))} removed —

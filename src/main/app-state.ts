@@ -10,6 +10,7 @@ import { generateFilmstrip } from './jobs/filmstrip'
 import { generateWaveform } from './jobs/waveform'
 import { generateAudioEnvelope } from './jobs/audio-envelope'
 import { ensurePcm, ensureProxy } from './jobs/media-derivatives'
+import { generateDenoised } from './jobs/denoise'
 import { generateTranscript } from './jobs/transcribe'
 import { ffmpegPath, whisperModelPath, whisperPath } from './binaries'
 import { startMediaServer, type MediaServer } from './media-server'
@@ -84,6 +85,10 @@ export function buildSnapshot(): LibrarySnapshot {
         asset.transcriptPath === undefined
           ? undefined
           : pathToMfileUrl(join(lib.root, asset.transcriptPath)),
+      denoisedUrl:
+        asset.denoisedPath === undefined
+          ? undefined
+          : pathToMfileUrl(join(lib.root, asset.denoisedPath)),
       envelopeUrl:
         asset.envelope === undefined
           ? undefined
@@ -142,6 +147,27 @@ export function enqueueTranscription(assetId: string): void {
         asset
       )
       lib.updateAsset(asset.id, { transcriptPath: relPath })
+    }
+  })
+}
+
+/** Queue voice cleanup (ffmpeg denoise); playback PCM prefers the result. */
+export function enqueueDenoise(assetId: string): void {
+  const lib = getStore()
+  const asset = lib.assets[assetId]
+  if (asset === undefined || asset.audio === undefined) return
+  queue.enqueue({
+    label: `denoise:${asset.fileName}`,
+    run: async () => {
+      try {
+        const relPath = await generateDenoised(lib.root, asset)
+        lib.updateAsset(asset.id, { denoisedPath: relPath, denoiseError: undefined })
+      } catch (error) {
+        lib.updateAsset(asset.id, {
+          denoiseError: error instanceof Error ? error.message : String(error)
+        })
+        throw error
+      }
     }
   })
 }

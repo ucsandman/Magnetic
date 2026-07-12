@@ -219,6 +219,8 @@ export interface MagneticApi {
   onSmartExportProgress(cb: (progress: { outTimeSec: number }) => void): () => void
   /** Queue (or re-queue) transcription of an asset with audio. */
   transcribeAsset(assetId: string): Promise<void>
+  /** Queue voice cleanup (denoise); playback prefers the result when done. */
+  denoiseAsset(assetId: string): Promise<void>
   /** Native save dialog for a caption sidecar; null when cancelled. */
   captionsPickDestination(format: 'srt' | 'vtt'): Promise<string | null>
   /** Write a serialized SRT/VTT sidecar to the given path. */

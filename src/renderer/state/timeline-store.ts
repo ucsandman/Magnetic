@@ -205,6 +205,17 @@ interface TimelineStore {
    */
   attributions: ReadonlyMap<string, { actor: 'Copilot' | 'Rough Cut'; atMs: number }>
   /**
+   * Flow self-check of the last accepted AI pass (score chip + ruler flag
+   * markers). Valid only while `sequence` IS `forSequence`; panels compute it
+   * (they own the envelopes) and any later edit silently retires it.
+   */
+  flowReport: {
+    forSequence: Sequence
+    score: number
+    flags: { flicks: number; kind: string; message: string }[]
+  } | null
+  setFlowReport(report: TimelineStore['flowReport']): void
+  /**
    * Ripple-delete a rough-cut plan (ascending, non-overlapping — what
    * planRoughCut returns) as ONE undo step, remembering provenance.
    */
@@ -757,6 +768,12 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 
     attributions: new Map(),
 
+    flowReport: null,
+
+    setFlowReport(flowReport) {
+      set({ flowReport })
+    },
+
     roughCut: null,
 
     applyRoughCut(ranges) {
@@ -957,7 +974,8 @@ export function installTimelineTestHooks(): void {
       silenceRanges,
       roughCut,
       pendingProposal,
-      attributions
+      attributions,
+      flowReport
     } = useTimelineStore.getState()
     return {
       sequence,
@@ -973,7 +991,9 @@ export function installTimelineTestHooks(): void {
       proposalRanges: pendingProposal?.ranges ?? null,
       proposalChanges: pendingProposal?.changes ?? null,
       proposalLabel: pendingProposal?.label ?? null,
-      attributions: [...attributions.entries()]
+      attributions: [...attributions.entries()],
+      flowScore: flowReport?.score ?? null,
+      flowFlags: flowReport?.flags ?? null
     }
   }
   testWindow.__magneticTimeline = {

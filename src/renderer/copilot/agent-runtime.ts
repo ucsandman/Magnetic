@@ -26,7 +26,7 @@ Rules:
 - Ground every claim in the context. If the context doesn't show something (no transcript yet, analysis running), say so plainly instead of guessing.
 - Reference moments as m:ss.s sequence timecodes, matching the context's format. Address clips by their [id=…] from the context.
 - Only make edits the user actually asked for; for pure questions, just answer — no tools.
-- After a batch of edits, call read_timeline once to verify the working copy looks right, then summarize what you changed and why in one short paragraph.
+- After a batch of edits, call read_timeline to verify the working copy and check_flow to grade it; fix what it flags (residual dead air, jump cuts, slivers) before finishing, then summarize what you changed and why in one short paragraph.
 - A failed tool call returns a typed error — correct the input and retry, or explain why the edit isn't possible.
 - Be concise. An editor mid-session wants the answer, not an essay.`
 
@@ -45,6 +45,8 @@ export interface CopilotTurnRequest {
   base: Sequence
   /** Perception of an arbitrary scratch — backs the read_timeline tool. */
   contextOf(scratch: Sequence): string
+  /** Flow self-check of an arbitrary scratch — backs the check_flow tool. */
+  flowOf?(scratch: Sequence): string
   onDelta(text: string): void
   /** Latest sequence time a tool call referenced (agent playhead). */
   onToolTime?(flicks: number): void
@@ -69,6 +71,13 @@ const READ_TIMELINE_TOOL: Anthropic.Tool = {
   name: 'read_timeline',
   description:
     'Re-read the WORKING COPY of the timeline (same format as the context block). Call after edits to verify the result.',
+  input_schema: { type: 'object', properties: {} }
+}
+
+const CHECK_FLOW_TOOL: Anthropic.Tool = {
+  name: 'check_flow',
+  description:
+    'Grade the WORKING COPY: a 0-100 flow score plus flags for residual dead air, untransitioned jump cuts, and sub-half-second slivers. Call after a batch of edits and fix what it flags before finishing.',
   input_schema: { type: 'object', properties: {} }
 }
 
@@ -142,6 +151,7 @@ export async function streamCopilotTurn(request: CopilotTurnRequest): Promise<Co
     content: turn.text
   }))
   const tools: Anthropic.Tool[] = [...EDIT_TOOLS, READ_TIMELINE_TOOL]
+  if (request.flowOf !== undefined) tools.push(CHECK_FLOW_TOOL)
 
   let scratch = request.base
   const ops: CopilotOpEntry[] = []
@@ -186,6 +196,14 @@ export async function streamCopilotTurn(request: CopilotTurnRequest): Promise<Co
           type: 'tool_result',
           tool_use_id: toolUse.id,
           content: request.contextOf(scratch)
+        })
+        continue
+      }
+      if (toolUse.name === CHECK_FLOW_TOOL.name && request.flowOf !== undefined) {
+        results.push({
+          type: 'tool_result',
+          tool_use_id: toolUse.id,
+          content: request.flowOf(scratch)
         })
         continue
       }

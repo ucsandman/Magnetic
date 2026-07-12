@@ -191,6 +191,16 @@ The **Rough Cut** tab merges dead-air and filler-word detection into a single pl
 
 The review window stays open until you edit something else or click **Done**; the AI badges are session-only provenance, never saved into the project. Every proposed sequence is checked against the timeline's legality invariants before it can be offered. Filler detection needs a transcript, so on freshly imported clips give transcription a moment to finish first.
 
+Tick **Clean up voice** before accepting and every asset in the cut is also queued for denoising (below).
+
+### Voice cleanup — one-click denoise
+
+Right-click any asset with audio → **Clean Up Audio** (or tick **Clean up voice** in Rough Cut). ffmpeg's FFT denoiser runs in the background and writes a cleaned track into the library cache; from then on **playback and export automatically prefer the cleaned audio** — nothing to re-link, and the original file is never touched. Re-run the same menu item to redo it after re-recording.
+
+### Flow score — the cut checks itself
+
+After any accepted AI pass (Rough Cut or Copilot), the cut is graded with three documented heuristics: residual **dead air**, **jump cuts** (same-source cuts with no transition), and sub-half-second **slivers**. The score shows as a colored chip in the panel, and each flag becomes a small orange marker on the timeline ruler — click one to jump the playhead there and judge for yourself. The Copilot also runs this check on its own working copy (`check_flow`) before proposing, so it fixes what it can before you ever see it. The report retires the moment you edit anything.
+
 ### Copilot — chat that edits, behind your Accept
 
 The **Copilot** tab is an editing partner: it sees the open sequence (clips and timing), the detected dead air, and the transcript, and it can both answer questions and make edits — but every edit lands on a **working copy**, never your timeline.

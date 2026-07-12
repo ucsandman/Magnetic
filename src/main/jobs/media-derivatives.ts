@@ -16,7 +16,17 @@ const execFileAsync = promisify(execFile)
 
 export async function ensurePcm(libraryRoot: string, asset: MediaAsset): Promise<string | null> {
   if (asset.audio === undefined) return null
-  const relPath = join('cache', 'pcm', `${asset.id}.wav`)
+  // Voice cleanup: once a denoised track exists, playback/export PCM derives
+  // from IT — a distinct cache name, so the raw extraction is never reused.
+  const denoisedSource =
+    asset.denoisedPath !== undefined && existsSync(join(libraryRoot, asset.denoisedPath))
+      ? asset.denoisedPath
+      : null
+  const relPath = join(
+    'cache',
+    'pcm',
+    denoisedSource !== null ? `${asset.id}.denoised.wav` : `${asset.id}.wav`
+  )
   const absPath = join(libraryRoot, relPath)
   if (!existsSync(absPath)) {
     mkdirSync(join(libraryRoot, 'cache', 'pcm'), { recursive: true })
@@ -27,7 +37,7 @@ export async function ensurePcm(libraryRoot: string, asset: MediaAsset): Promise
         'error',
         '-y',
         '-i',
-        join(libraryRoot, asset.libraryRelPath),
+        join(libraryRoot, denoisedSource ?? asset.libraryRelPath),
         '-vn',
         '-acodec',
         'pcm_s16le',

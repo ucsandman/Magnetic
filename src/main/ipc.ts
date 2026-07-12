@@ -75,6 +75,7 @@ export interface IpcDeps {
   ensurePcm(assetId: string): Promise<string | null>
   ensureProxy(assetId: string): Promise<string>
   transcribe(assetId: string): void
+  denoise(assetId: string): void
   getSettings(): { autoTranscribe: boolean; anthropicApiKey: string | null }
   setSettings(settings: { autoTranscribe?: boolean; anthropicApiKey?: string | null }): void
   relink(assetId: string): Promise<void>
@@ -116,6 +117,10 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
 
   handleValidated(IPC.transcribeRun, assetIdPayloadSchema, async (payload) => {
     deps.transcribe(payload.assetId)
+  })
+
+  handleValidated(IPC.mediaDenoise, assetIdPayloadSchema, async (payload) => {
+    deps.denoise(payload.assetId)
   })
 
   handleValidated(IPC.settingsGet, z.undefined(), async () => deps.getSettings())

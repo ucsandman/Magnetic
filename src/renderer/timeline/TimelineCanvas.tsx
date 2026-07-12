@@ -99,7 +99,8 @@ export function TimelineCanvas(): ReactNode {
       roughCut,
       pendingProposal,
       agentPlayheadFlicks,
-      attributions
+      attributions,
+      flowReport
     } = useTimelineStore.getState()
     const canvas = canvasRef.current
     if (sequence === null || canvas === null) return null
@@ -129,6 +130,8 @@ export function TimelineCanvas(): ReactNode {
       proposal,
       agentPlayheadFlicks,
       attributedClipIds: attributions.size > 0 ? new Set(attributions.keys()) : null,
+      flowFlags:
+        flowReport !== null && flowReport.forSequence === sequence ? flowReport.flags : null,
       // badges only while the rough cut is still the sequence's top of history
       roughCutCuts:
         roughCut !== null && roughCut.resultSequence === sequence ? roughCut.cuts : null,

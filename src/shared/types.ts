@@ -64,6 +64,10 @@ export interface MediaAsset {
   proxyPath?: string
   /** Whisper transcript JSON, cache-relative (phase 10). */
   transcriptPath?: string
+  /** Denoised voice track (ffmpeg afftdn), cache-relative — playback/export PCM prefers it. */
+  denoisedPath?: string
+  /** Set when denoising failed; cleared on success. */
+  denoiseError?: string
 }
 
 /** One transcribed word with media-time bounds (phase 10). */
@@ -114,6 +118,8 @@ export interface AssetView extends Omit<MediaAsset, 'filmstrip' | 'waveform'> {
   proxyUrl?: string
   /** mfile:// URL of the transcript JSON, when transcription has finished. */
   transcriptUrl?: string
+  /** mfile:// URL of the denoised voice track, when cleanup has finished. */
+  denoisedUrl?: string
   /** mfile:// URL of the RMS-envelope JSON, when envelope analysis has finished. */
   envelopeUrl?: string
   /** True when the imported media file is gone from disk (needs relinking). */

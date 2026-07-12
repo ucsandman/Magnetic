@@ -1492,6 +1492,30 @@ select,
   color: var(--color-text-dim);
 }
 
+.flow-chip {
+  flex-shrink: 0;
+  margin: 0 8px 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.flow-good {
+  background: #30d15822;
+  color: #30d158;
+}
+
+.flow-ok {
+  background: #ff9f0a22;
+  color: #ff9f0a;
+}
+
+.flow-poor {
+  background: #ff453a22;
+  color: #ff453a;
+}
+
 .inspector-attribution {
   display: flex;
   align-items: center;

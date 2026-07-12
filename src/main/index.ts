@@ -12,6 +12,7 @@ import {
   buildSnapshot,
   ensurePcmUrl,
   ensureProxyUrl,
+  enqueueDenoise,
   enqueueTranscription,
   getStore,
   importAndProcess,
@@ -91,6 +92,7 @@ app.whenReady().then(async () => {
     ensurePcm: (assetId) => ensurePcmUrl(assetId),
     ensureProxy: (assetId) => ensureProxyUrl(assetId),
     transcribe: (assetId) => enqueueTranscription(assetId),
+    denoise: (assetId) => enqueueDenoise(assetId),
     getSettings: () => ({
       autoTranscribe: getAutoTranscribe(),
       anthropicApiKey: getAnthropicApiKey()
