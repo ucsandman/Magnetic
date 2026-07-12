@@ -59,7 +59,12 @@ import {
   type Selection
 } from '../../shared/timeline/select'
 import { UndoStack, type Op } from '../../shared/timeline/undo'
-import { cutPointsFor, type RoughCutPoint, type RoughCutRange } from '../agent/roughcut'
+import {
+  buildRoughCutProposal,
+  cutPointsFor,
+  type RoughCutPoint,
+  type RoughCutRange
+} from '../agent/roughcut'
 import { playbackEngine } from '../playback/engine'
 import { loadLoopPref, saveLoopPref } from '../playback/loop'
 import { measureDraws } from '../timeline/perf'
@@ -145,6 +150,27 @@ interface TimelineStore {
     ranges: RoughCutRange[]
     cuts: RoughCutPoint[]
   } | null
+  /**
+   * Ghost-diff-before-commit: a validated scratch sequence that has NOT
+   * touched the undo stack. The canvas ghost-renders it; Accept replays it as
+   * one undo group, Discard drops it leaving ZERO history. Stale the moment
+   * `sequence` is no longer `baseSequence` (the human kept editing — allowed).
+   */
+  pendingProposal: {
+    baseSequence: Sequence
+    proposedSequence: Sequence
+    ranges: RoughCutRange[]
+  } | null
+  /**
+   * Build + validate a rough-cut proposal against the current sequence.
+   * False (with a console warning) when the plan is empty, no-ops, or fails
+   * the validateSequence gate — an unusable proposal is never offered.
+   */
+  proposeRoughCut(ranges: RoughCutRange[]): boolean
+  /** Commit the pending proposal through the undo stack as ONE group. */
+  acceptProposal(): void
+  /** Drop the pending proposal. Zero history entries by construction. */
+  discardProposal(): void
   /**
    * Ripple-delete a rough-cut plan (ascending, non-overlapping — what
    * planRoughCut returns) as ONE undo step, remembering provenance.
@@ -564,6 +590,35 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
       set({ silenceRanges })
     },
 
+    pendingProposal: null,
+
+    proposeRoughCut(ranges) {
+      const { sequence } = get()
+      if (sequence === null || ranges.length === 0) return false
+      const { proposed, errors } = buildRoughCutProposal(sequence, ranges)
+      if (errors.length > 0 || proposed === sequence) {
+        const detail = errors.map((error) => `${error.code}: ${error.message}`).join('; ')
+        console.warn(`rough cut proposal rejected — ${detail || 'plan removes nothing'}`)
+        return false
+      }
+      set({ pendingProposal: { baseSequence: sequence, proposedSequence: proposed, ranges } })
+      return true
+    },
+
+    acceptProposal() {
+      const { sequence, pendingProposal } = get()
+      if (pendingProposal === null) return
+      set({ pendingProposal: null })
+      // The scratch was computed against this exact sequence; if the human
+      // kept editing underneath it, the proposal is stale and silently drops.
+      if (sequence !== pendingProposal.baseSequence) return
+      get().applyRoughCut(pendingProposal.ranges)
+    },
+
+    discardProposal() {
+      set({ pendingProposal: null })
+    },
+
     roughCut: null,
 
     applyRoughCut(ranges) {
@@ -761,7 +816,8 @@ export function installTimelineTestHooks(): void {
       tool,
       clipboard,
       silenceRanges,
-      roughCut
+      roughCut,
+      pendingProposal
     } = useTimelineStore.getState()
     return {
       sequence,
@@ -773,7 +829,8 @@ export function installTimelineTestHooks(): void {
       tool,
       clipboard,
       silenceRanges,
-      roughCutCuts: roughCut?.cuts ?? null
+      roughCutCuts: roughCut?.cuts ?? null,
+      proposalRanges: pendingProposal?.ranges ?? null
     }
   }
   testWindow.__magneticTimeline = {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import { clip, seq } from '../../shared/timeline/testing'
 import type { AudioEnvelope, Transcript } from '../../shared/types'
-import { cutPointsFor, planRoughCut, silenceOptionsFor } from './roughcut'
+import { buildRoughCutProposal, cutPointsFor, planRoughCut, silenceOptionsFor } from './roughcut'
 
 const SEC = FLICKS_PER_SECOND
 const WINDOW_MS = 50
@@ -97,6 +97,38 @@ describe('cutPointsFor', () => {
 
   it('returns no points for an empty plan', () => {
     expect(cutPointsFor([])).toEqual([])
+  })
+})
+
+describe('buildRoughCutProposal', () => {
+  it('builds a validated scratch sequence without touching the base or any undo state', () => {
+    const base = seq([clip('a', 300)]) // deep-frozen: mutation would throw
+    const proposal = buildRoughCutProposal(base, [
+      { fromFlicks: 2 * SEC, toFlicks: 4 * SEC, reason: 'silence' },
+      { fromFlicks: 6 * SEC, toFlicks: 6.5 * SEC, reason: 'filler' }
+    ])
+    expect(proposal.errors).toEqual([])
+    expect(proposal.proposed.spine).toHaveLength(3)
+    const duration = proposal.proposed.spine.reduce((sum, item) => sum + item.durationFlicks, 0)
+    expect(duration).toBe(7.5 * SEC)
+    expect(base.spine).toHaveLength(1)
+  })
+
+  it('returns the base unchanged for an empty plan', () => {
+    const base = seq([clip('a', 300)])
+    const proposal = buildRoughCutProposal(base, [])
+    expect(proposal.proposed).toBe(base)
+    expect(proposal.errors).toEqual([])
+  })
+
+  it('skips ranges beyond the sequence instead of failing the whole plan', () => {
+    const base = seq([clip('a', 300)])
+    const proposal = buildRoughCutProposal(base, [
+      { fromFlicks: 2 * SEC, toFlicks: 4 * SEC, reason: 'silence' },
+      { fromFlicks: 20 * SEC, toFlicks: 21 * SEC, reason: 'silence' }
+    ])
+    expect(proposal.errors).toEqual([])
+    expect(proposal.proposed.spine).toHaveLength(2)
   })
 })
 

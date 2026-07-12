@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
-import { flicksPerFrame } from '../timecode'
 import type { Clip, ConnectedClip, Sequence } from './model'
-import { connectedStartOf, sequenceDuration, spineStartOf } from './model'
+import { sequenceDuration, spineStartOf } from './model'
+import { validateSequence } from './validate'
 import { resolveLaneCollisions } from './magnetic'
 import {
   append,
@@ -252,44 +252,14 @@ function applyCommand(seq: Sequence, cmd: Cmd, step: number): OpResult {
   }
 }
 
+/** The runtime guard IS the invariant check now — plus the derived-position law. */
 function checkInvariants(seq: Sequence): void {
-  const minFlicks = flicksPerFrame(seq.fps)
-  const spineIds = new Set<string>()
+  expect(validateSequence(seq)).toEqual([])
+  // derived positions strictly increasing: each start matches the prefix sum
   let position = 0
   for (const item of seq.spine) {
-    expect(item.durationFlicks, `duration of ${item.id}`).toBeGreaterThanOrEqual(minFlicks)
-    if (item.kind === 'clip') {
-      expect(item.mediaInFlicks, `mediaIn of ${item.id}`).toBeGreaterThanOrEqual(0)
-      expect(
-        item.mediaInFlicks + item.durationFlicks,
-        `media bounds of ${item.id}`
-      ).toBeLessThanOrEqual(item.sourceDurationFlicks)
-    }
-    expect(spineIds.has(item.id), `duplicate spine id ${item.id}`).toBe(false)
-    spineIds.add(item.id)
-    // derived positions strictly increasing: each start matches the prefix sum
     expect(spineStartOf(seq, item.id), `start of ${item.id}`).toBe(position)
     position += item.durationFlicks
-  }
-  const placed: { lane: number; start: number; end: number }[] = []
-  for (const cc of seq.connected) {
-    expect(cc.durationFlicks, `duration of connected ${cc.id}`).toBeGreaterThanOrEqual(minFlicks)
-    expect(cc.mediaInFlicks, `mediaIn of connected ${cc.id}`).toBeGreaterThanOrEqual(0)
-    // looped clips tile their media, so the duration is unbounded by the source
-    if (cc.loop !== true) {
-      expect(
-        cc.mediaInFlicks + cc.durationFlicks,
-        `media bounds of connected ${cc.id}`
-      ).toBeLessThanOrEqual(cc.sourceDurationFlicks)
-    }
-    expect(spineIds.has(cc.parentClipId), `parent of ${cc.id} exists`).toBe(true)
-    const start = connectedStartOf(seq, cc.id)!
-    const end = start + cc.durationFlicks
-    for (const other of placed) {
-      const overlaps = other.lane === cc.lane && other.start < end && start < other.end
-      expect(overlaps, `lane ${cc.lane} overlap at ${start}`).toBe(false)
-    }
-    placed.push({ lane: cc.lane, start, end })
   }
 }
 

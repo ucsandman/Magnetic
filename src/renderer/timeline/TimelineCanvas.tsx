@@ -89,15 +89,36 @@ export function TimelineCanvas(): ReactNode {
   }, [snapshot, openedAssetId])
 
   const buildRenderState = useCallback((): RenderState | null => {
-    const { sequence, selection, playheadFlicks, zoomPxPerSec, silenceRanges, roughCut } =
-      useTimelineStore.getState()
+    const {
+      sequence,
+      selection,
+      playheadFlicks,
+      zoomPxPerSec,
+      silenceRanges,
+      roughCut,
+      pendingProposal
+    } = useTimelineStore.getState()
     const canvas = canvasRef.current
     if (sequence === null || canvas === null) return null
+    // ghost strip: the proposed spine's clip layout in proposed time
+    let proposal: RenderState['proposal'] = null
+    if (pendingProposal !== null && pendingProposal.baseSequence === sequence) {
+      const ghostClips: { fromFlicks: number; toFlicks: number }[] = []
+      let position = 0
+      for (const item of pendingProposal.proposedSequence.spine) {
+        if (item.kind === 'clip') {
+          ghostClips.push({ fromFlicks: position, toFlicks: position + item.durationFlicks })
+        }
+        position += item.durationFlicks
+      }
+      proposal = { deletions: pendingProposal.ranges, ghostClips }
+    }
     return {
       sequence,
       selection,
       snapshot: snapshotRef.current,
       silenceRanges,
+      proposal,
       // badges only while the rough cut is still the sequence's top of history
       roughCutCuts:
         roughCut !== null && roughCut.resultSequence === sequence ? roughCut.cuts : null,

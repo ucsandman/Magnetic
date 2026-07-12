@@ -185,10 +185,11 @@ Detection is a loudness heuristic (50 ms RMS windows), so near fades you may wan
 The **Rough Cut** tab merges dead-air and filler-word detection into a single plan and applies it in one click — the first pass of a talking-head edit, done for you, with every cut reviewable:
 
 1. Open the **Rough Cut** tab. One **Aggressiveness** slider replaces the three silence knobs (higher = shorter pauses count as dead air), and **Remove fillers** adds the transcript's um/uh/you-know ranges to the plan. Candidates preview live as red bands; each row says whether it's dead air or a filler, click a row to jump there, untick to keep it.
-2. Click **Rough Cut** — everything is ripple-deleted as ONE undo step, and the panel switches to review mode.
-3. Review spell-checker style: every cut gets a blue **AI** badge on the timeline ruler and a row in the list. Click a row to inspect that edit point; click **Reject** to restore just that cut — the others stay. One `Ctrl+Z` still reverts the whole pass.
+2. Click **Rough Cut** — nothing is applied yet. The proposal ghost-renders on the real timeline: red **hatched strikethrough** over everything that would go, and a green **PREVIEW strip** along the bottom showing the tightened result at the same time scale. Your timeline is never locked — keep editing if you want; any edit simply voids the proposal.
+3. Click **Accept** to commit everything as ONE undo step (or **Discard** to drop it — the proposal never touches undo history, so discarding leaves zero trace).
+4. Review spell-checker style: every cut gets a blue **AI** badge on the timeline ruler and a row in the list. Click a row to inspect that edit point; click **Reject** to restore just that cut — the others stay. One `Ctrl+Z` still reverts the whole pass.
 
-The review window stays open until you edit something else or click **Done**; the AI badges are session-only provenance, never saved into the project. Filler detection needs a transcript, so on freshly imported clips give transcription a moment to finish first.
+The review window stays open until you edit something else or click **Done**; the AI badges are session-only provenance, never saved into the project. Every proposed sequence is checked against the timeline's legality invariants before it can be offered. Filler detection needs a transcript, so on freshly imported clips give transcription a moment to finish first.
 
 ### Burned-in captions — live from the transcript
 

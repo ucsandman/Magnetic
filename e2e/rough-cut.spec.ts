@@ -30,6 +30,7 @@ interface RoughCutTestState {
   sequence: Sequence | null
   silenceRanges: { fromFlicks: number; toFlicks: number }[] | null
   roughCutCuts: { flicks: number; reason: string; removedFlicks: number }[] | null
+  proposalRanges: { fromFlicks: number; toFlicks: number; reason: string }[] | null
 }
 
 function launchApp(libraryPath: string): Promise<ElectronApplication> {
@@ -110,9 +111,36 @@ test('rough cut: one button, per-cut reject keeps the rest, one-step undo', asyn
   expect(state.silenceRanges).toHaveLength(2)
   expect(state.roughCutCuts).toBeNull()
 
-  // ---- one button applies both cuts and enters review mode ----
+  // ---- one button PROPOSES: ghost diff, sequence untouched ----
   const beforeCut = await totalDuration(page)
   await page.getByTestId('roughcut-apply').click()
+  await expect(page.getByTestId('roughcut-proposal-summary')).toContainText('2 cuts')
+  state = await getState(page)
+  expect(state.proposalRanges).toHaveLength(2)
+  expect(state.sequence!.spine).toHaveLength(1) // NOTHING committed yet
+  expect(await totalDuration(page)).toBe(beforeCut)
+  expect(state.silenceRanges).toBeNull() // the ghost overlay owns the visual now
+
+  // ---- Discard drops the proposal with ZERO history entries ----
+  await page.getByTestId('roughcut-discard').click()
+  await expect(page.getByTestId('roughcut-apply')).toBeVisible()
+  state = await getState(page)
+  expect(state.proposalRanges).toBeNull()
+  expect(state.sequence!.spine).toHaveLength(1)
+  // top of history is still the append itself: one undo empties the spine…
+  await page.keyboard.press('Control+z')
+  state = await getState(page)
+  expect(state.sequence!.spine).toHaveLength(0)
+  // …and redo restores it — the discarded proposal never touched the stack
+  await page.keyboard.press('Control+Shift+z')
+  state = await getState(page)
+  expect(state.sequence!.spine).toHaveLength(1)
+  console.log('discard left zero history entries')
+
+  // ---- propose again, Accept commits as ONE undo step + review mode ----
+  await page.getByTestId('roughcut-apply').click()
+  await expect(page.getByTestId('roughcut-proposal-summary')).toContainText('2 cuts')
+  await page.getByTestId('roughcut-accept').click()
   await expect(page.getByTestId('roughcut-review-summary')).toContainText('2 cuts')
   state = await getState(page)
   expect(state.sequence!.spine).toHaveLength(3)

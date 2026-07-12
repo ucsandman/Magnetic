@@ -1,6 +1,6 @@
 import { FLICKS_PER_SECOND, flicksToTimecode } from '../../shared/timecode'
 import { sequenceDuration, type Sequence } from '../../shared/timeline/model'
-import { minimapLayout } from './minimap'
+import { MINIMAP_H, minimapLayout } from './minimap'
 import { keyframeMarkerTimes } from '../../shared/timeline/fx-eval'
 import { spineStartIndex } from '../../shared/timeline/magnetic'
 import { editPointIndexOfCut, transitionsOf } from '../../shared/timeline/transitions'
@@ -69,6 +69,15 @@ export interface RenderState {
   silenceRanges: { fromFlicks: number; toFlicks: number }[] | null
   /** Applied rough-cut edit points — AI provenance badges under the ruler. */
   roughCutCuts: { flicks: number }[] | null
+  /**
+   * Pending ghost-diff proposal: to-be-deleted ranges hatched over the real
+   * clips (base time), and the proposed result as a green ghost strip above
+   * the minimap zone (proposed time, same scale — clips visibly shift left).
+   */
+  proposal: {
+    deletions: { fromFlicks: number; toFlicks: number }[]
+    ghostClips: { fromFlicks: number; toFlicks: number }[]
+  } | null
   playheadFlicks: number
   zoomPxPerSec: number
   scrollX: number
@@ -583,6 +592,52 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
       ctx.strokeStyle = '#ff453a99'
       ctx.lineWidth = 1
       ctx.strokeRect(x1 + 0.5, RULER_H + 0.5, Math.max(1, x2 - x1), state.height - RULER_H - 1)
+    }
+  }
+
+  // ghost-diff proposal: hatched strikethrough over the to-be-deleted ranges,
+  // and the proposed result as a green ghost strip anchored above the minimap
+  // zone — nothing here is committed until the human accepts
+  if (state.proposal !== null) {
+    for (const range of state.proposal.deletions) {
+      const x1 = timeToX(state, range.fromFlicks)
+      const x2 = timeToX(state, range.toFlicks)
+      if (x2 < 0 || x1 > state.width) continue
+      const w = Math.max(1, x2 - x1)
+      ctx.fillStyle = '#ff453a22'
+      ctx.fillRect(x1, RULER_H, w, state.height - RULER_H)
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(x1, RULER_H, w, state.height - RULER_H)
+      ctx.clip()
+      ctx.strokeStyle = '#ff453a88'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      for (let x = x1 - state.height; x < x2; x += 7) {
+        ctx.moveTo(x, state.height)
+        ctx.lineTo(x + state.height, RULER_H)
+      }
+      ctx.stroke()
+      ctx.restore()
+      ctx.strokeStyle = '#ff453a99'
+      ctx.strokeRect(x1 + 0.5, RULER_H + 0.5, w, state.height - RULER_H - 1)
+    }
+    const stripH = 12
+    const stripY = state.height - MINIMAP_H - stripH - 4
+    ctx.font = '8px system-ui, sans-serif'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#30d158'
+    ctx.fillText('PREVIEW', 4, stripY - 6)
+    for (const ghost of state.proposal.ghostClips) {
+      const x1 = timeToX(state, ghost.fromFlicks)
+      const x2 = timeToX(state, ghost.toFlicks)
+      if (x2 < 0 || x1 > state.width) continue
+      roundedRectPath(ctx, x1, stripY, Math.max(2, x2 - x1 - 1), stripH, 2)
+      ctx.fillStyle = '#30d15833'
+      ctx.fill()
+      ctx.strokeStyle = '#30d158aa'
+      ctx.lineWidth = 1
+      ctx.stroke()
     }
   }
 

@@ -1,5 +1,7 @@
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import type { Sequence } from '../../shared/timeline/model'
+import { rippleDeleteRange, type OpError } from '../../shared/timeline/ops'
+import { validateSequence } from '../../shared/timeline/validate'
 import type { AudioEnvelope, Transcript } from '../../shared/types'
 import { DEFAULT_PAD_FLICKS, detectSilence, type SilenceOptions } from '../silence/detect'
 import { fillerRanges, projectTranscript } from '../transcript/projection'
@@ -79,6 +81,36 @@ export function cutPointsFor(ranges: readonly RoughCutRange[]): RoughCutPoint[] 
     removed += range.toFlicks - range.fromFlicks
   }
   return points
+}
+
+export interface RoughCutProposal {
+  proposed: Sequence
+  errors: OpError[]
+}
+
+/**
+ * Ghost-diff-before-commit: run the plan against a SCRATCH sequence — pure
+ * kernel ops, no store, no undo stack — and gate the result through
+ * validateSequence. Op errors and invariant violations are collected so the
+ * panel can refuse to offer an unusable proposal; ranges that no-op (already
+ * clamped away) are skipped, matching how the executor treats them.
+ */
+export function buildRoughCutProposal(
+  base: Sequence,
+  ranges: readonly RoughCutRange[]
+): RoughCutProposal {
+  const errors: OpError[] = []
+  let proposed = base
+  for (const range of [...ranges].sort((a, b) => b.fromFlicks - a.fromFlicks)) {
+    const result = rippleDeleteRange(proposed, range)
+    if (result.error !== undefined) {
+      errors.push(result.error)
+      continue
+    }
+    proposed = result.next
+  }
+  errors.push(...validateSequence(proposed))
+  return { proposed, errors }
 }
 
 /**

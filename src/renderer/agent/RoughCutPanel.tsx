@@ -22,6 +22,7 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
   const { snapshot } = useLibrary()
   const sequence = useTimelineStore((state) => state.sequence)
   const roughCut = useTimelineStore((state) => state.roughCut)
+  const pendingProposal = useTimelineStore((state) => state.pendingProposal)
   const [aggressiveness, setAggressiveness] = useState(50)
   const [includeFillers, setIncludeFillers] = useState(true)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
@@ -46,6 +47,14 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
     if (roughCut !== null && !reviewing) useTimelineStore.getState().clearRoughCut()
   }, [roughCut, reviewing])
 
+  // Proposal mode while the scratch is still computed against this sequence;
+  // the human is never locked out, so their edits simply void the proposal.
+  const proposing = pendingProposal !== null && sequence === pendingProposal.baseSequence
+  useEffect(() => {
+    if (pendingProposal !== null && !proposing) useTimelineStore.getState().discardProposal()
+  }, [pendingProposal, proposing])
+  useEffect(() => () => useTimelineStore.getState().discardProposal(), [])
+
   const plan = useMemo(
     () =>
       sequence === null
@@ -62,10 +71,11 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
     [plan, excluded]
   )
 
-  // preview bands only while planning; the review list speaks for itself
+  // preview bands only while planning; the ghost overlay owns the proposal
+  // visual and the review list speaks for itself
   useEffect(() => {
-    useTimelineStore.getState().setSilenceRanges(reviewing ? null : included)
-  }, [included, reviewing])
+    useTimelineStore.getState().setSilenceRanges(reviewing || proposing ? null : included)
+  }, [included, reviewing, proposing])
   useEffect(() => () => useTimelineStore.getState().setSilenceRanges(null), [])
 
   const totalFlicks = included.reduce((sum, range) => sum + (range.toFlicks - range.fromFlicks), 0)
@@ -86,10 +96,9 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
     })
   }
 
-  const apply = (): void => {
+  const propose = (): void => {
     if (included.length === 0) return
-    useTimelineStore.getState().applyRoughCut(included)
-    setExcluded(new Set())
+    if (useTimelineStore.getState().proposeRoughCut(included)) setExcluded(new Set())
   }
 
   const finish = (): void => {
@@ -109,7 +118,7 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
         }
       }}
     >
-      {!reviewing && (
+      {!reviewing && !proposing && (
         <>
           <div className="silence-controls">
             <label className="silence-field">
@@ -191,13 +200,66 @@ export function RoughCutPanel({ onClose }: { onClose(): void }): ReactNode {
               className="primary"
               data-testid="roughcut-apply"
               disabled={included.length === 0}
-              title="Ripple-delete every checked range (one undo step), then review each cut"
-              onClick={apply}
+              title="Preview every checked cut as a ghost diff on the timeline — nothing applies until you accept"
+              onClick={propose}
             >
               Rough Cut
             </button>
             <button type="button" data-testid="roughcut-cancel" onClick={onClose}>
               Cancel
+            </button>
+          </div>
+        </>
+      )}
+      {proposing && (
+        <>
+          <div className="silence-summary" data-testid="roughcut-proposal-summary">
+            Proposed: {pendingProposal.ranges.length} cut
+            {pendingProposal.ranges.length === 1 ? '' : 's'} ·{' '}
+            {formatSec(
+              pendingProposal.ranges.reduce(
+                (sum, range) => sum + (range.toFlicks - range.fromFlicks),
+                0
+              )
+            )}{' '}
+            tighter — hatched on the timeline, green strip shows the result. Nothing has been
+            applied yet.
+          </div>
+          <div className="silence-list" data-testid="roughcut-proposal-list">
+            {pendingProposal.ranges.map((range, index) => (
+              <div
+                key={rangeKey(range)}
+                className="silence-row"
+                data-testid={`roughcut-proposed-${index}`}
+                onClick={() => seekTo(range.fromFlicks)}
+              >
+                <span className="silence-row-start">{formatSec(range.fromFlicks)}</span>
+                <span className="silence-row-duration">
+                  {formatSec(range.toFlicks - range.fromFlicks)}
+                </span>
+                <span className={`roughcut-reason roughcut-reason-${range.reason}`}>
+                  {reasonLabel[range.reason]}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="silence-actions">
+            <button
+              type="button"
+              className="primary"
+              data-testid="roughcut-accept"
+              title="Commit the proposed cuts as one undo step"
+              onClick={() => useTimelineStore.getState().acceptProposal()}
+            >
+              Accept
+            </button>
+            <button
+              type="button"
+              data-testid="roughcut-discard"
+              title="Drop the proposal — the timeline never changed"
+              onClick={() => useTimelineStore.getState().discardProposal()}
+            >
+              Discard
             </button>
           </div>
         </>

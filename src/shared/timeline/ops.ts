@@ -22,7 +22,13 @@ import { editPointIndexOfCut, editPointInfo, pruneTransitions, transitionsOf } f
  */
 
 export interface OpError {
-  code: 'invalid-clip' | 'duplicate-id' | 'unknown-id' | 'out-of-range' | 'invalid-target'
+  code:
+    | 'invalid-clip'
+    | 'duplicate-id'
+    | 'unknown-id'
+    | 'out-of-range'
+    | 'invalid-target'
+    | 'invariant'
   message: string
 }
 
