@@ -80,6 +80,49 @@ describe('sequenceSchema captions round-trip', () => {
   })
 })
 
+/** Same strips-keys trap: pin clip `role` tags and sequence `mutedRoles`. */
+describe('sequenceSchema role round-trip', () => {
+  const base: Sequence = {
+    id: 's1',
+    fps: { num: 30, den: 1 },
+    spine: [
+      {
+        kind: 'clip',
+        id: 'a',
+        assetId: 'asset-a',
+        mediaInFlicks: 0,
+        durationFlicks: 23_520_000,
+        sourceDurationFlicks: 235_200_000,
+        role: 'music'
+      }
+    ],
+    connected: [
+      {
+        id: 'c',
+        assetId: 'asset-c',
+        parentClipId: 'a',
+        offsetFlicks: 0,
+        lane: -1,
+        mediaInFlicks: 0,
+        durationFlicks: 23_520_000,
+        sourceDurationFlicks: 235_200_000,
+        role: 'sfx'
+      }
+    ],
+    mutedRoles: ['music']
+  }
+
+  it('preserves role tags and mutedRoles through parse', () => {
+    const parsed = sequenceSchema.parse(base)
+    expect(parsed).toEqual(base)
+  })
+
+  it('rejects unknown role names', () => {
+    const result = sequenceSchema.safeParse({ ...base, mutedRoles: ['narration'] })
+    expect(result.success).toBe(false)
+  })
+})
+
 /** Same z.object-strips-keys trap for connected-clip fields: pin `loop`. */
 describe('sequenceSchema connected-clip loop round-trip', () => {
   const base: Sequence = {

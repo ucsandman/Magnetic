@@ -1,6 +1,6 @@
 import { flicksToSeconds } from '../../shared/timecode'
 import { spineStartIndex } from '../../shared/timeline/magnetic'
-import type { ClipFx, Sequence } from '../../shared/timeline/model'
+import { effectiveRole, type ClipFx, type Sequence } from '../../shared/timeline/model'
 import { DEFAULT_FX } from '../../shared/timeline/ops'
 import { gainAutomationFor } from './automation'
 import { openPcm, type PcmSource } from './pcm-source'
@@ -79,10 +79,15 @@ function pushLoopIterations(jobs: AudioJob[], job: AudioJob, sourceDurSec: numbe
 /** Every audible clip in the sequence (titles and audio-detached spine clips are silent). */
 export function collectAudioJobs(sequence: Sequence): AudioJob[] {
   const startOf = spineStartIndex(sequence.spine)
+  const muted = new Set(sequence.mutedRoles ?? [])
+  const isMuted = (item: Parameters<typeof effectiveRole>[0]): boolean => {
+    const role = effectiveRole(item)
+    return role !== null && muted.has(role)
+  }
   const jobs: AudioJob[] = []
   let position = 0
   for (const item of sequence.spine) {
-    if (item.kind === 'clip' && item.audioDisabled !== true) {
+    if (item.kind === 'clip' && item.audioDisabled !== true && !isMuted(item)) {
       jobs.push({
         assetId: item.assetId,
         clipStartSec: flicksToSeconds(position),
@@ -94,7 +99,7 @@ export function collectAudioJobs(sequence: Sequence): AudioJob[] {
     position += item.durationFlicks
   }
   for (const cc of sequence.connected) {
-    if (cc.titleData !== undefined || cc.audioDisabled === true) continue
+    if (cc.titleData !== undefined || cc.audioDisabled === true || isMuted(cc)) continue
     const parentStart = startOf.get(cc.parentClipId)
     if (parentStart === undefined) continue
     const job: AudioJob = {

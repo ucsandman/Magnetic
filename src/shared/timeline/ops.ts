@@ -3,6 +3,7 @@ import type {
   CaptionSettings,
   Clip,
   ClipFx,
+  ClipRole,
   ConnectedClip,
   Sequence,
   SpineItem,
@@ -658,6 +659,50 @@ export function rippleDeleteRange(
     }
   }
   return ok(seq, spine, connected)
+}
+
+const ROLE_VALUES: readonly ClipRole[] = ['dialogue', 'music', 'sfx']
+
+/** Tag a spine clip or connected media clip with an audio role (undoable). */
+export function setClipRole(seq: Sequence, args: { clipId: string; role: ClipRole }): OpResult {
+  if (!ROLE_VALUES.includes(args.role)) {
+    return fail(seq, 'invalid-target', `unknown role "${args.role}"`)
+  }
+  const spineIndex = spineIndexOf(seq, args.clipId)
+  if (spineIndex !== -1) {
+    const item = seq.spine[spineIndex]
+    if (item.kind !== 'clip') return fail(seq, 'invalid-target', 'gaps carry no audio role')
+    if (item.role === args.role) return noop(seq)
+    const spine = [...seq.spine]
+    spine[spineIndex] = { ...item, role: args.role }
+    return ok(seq, spine, seq.connected)
+  }
+  const connectedIndex = seq.connected.findIndex((cc) => cc.id === args.clipId)
+  if (connectedIndex === -1) return fail(seq, 'unknown-id', `no clip "${args.clipId}"`)
+  const cc = seq.connected[connectedIndex]
+  if (cc.titleData !== undefined) return fail(seq, 'invalid-target', 'titles carry no audio role')
+  if (cc.role === args.role) return noop(seq)
+  const connected = [...seq.connected]
+  connected[connectedIndex] = { ...cc, role: args.role }
+  return ok(seq, seq.spine, connected)
+}
+
+/** Set the roles silenced in the mix (mute/solo; undoable, persists with the sequence). */
+export function setMutedRoles(seq: Sequence, args: { roles: ClipRole[] }): OpResult {
+  for (const role of args.roles) {
+    if (!ROLE_VALUES.includes(role)) {
+      return fail(seq, 'invalid-target', `unknown role "${role}"`)
+    }
+  }
+  const roles = [...new Set(args.roles)].sort()
+  const current = seq.mutedRoles ?? []
+  if (roles.length === current.length && roles.every((role, i) => role === current[i])) {
+    return noop(seq)
+  }
+  return {
+    next: { ...seq, mutedRoles: roles },
+    inverse: { type: 'restore', sequence: seq }
+  }
 }
 
 export const DEFAULT_CAPTIONS: CaptionSettings = {

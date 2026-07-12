@@ -5,10 +5,13 @@ import type { Sequence, TransitionKind } from '../../shared/timeline/model'
 import {
   addTransition,
   blade,
+  DEFAULT_FX,
   move,
   rippleDelete,
   rippleDeleteRange,
   roll,
+  setClipFx,
+  setClipRole,
   slip,
   trimRipple,
   type OpResult
@@ -54,6 +57,7 @@ const failure = (scratch: Sequence, resultText: string): ToolOutcome => ({
 })
 
 const KIND_VALUES = ['dissolve', 'wipeL', 'wipeR', 'fadeBlack'] as const
+const ROLE_VALUES = ['dialogue', 'music', 'sfx'] as const
 
 const SCHEMAS = {
   ripple_delete_range: z.strictObject({ from_sec: z.number().min(0), to_sec: z.number().min(0) }),
@@ -71,7 +75,9 @@ const SCHEMAS = {
     edit_point_index: z.number().int().min(0),
     duration_sec: z.number().positive(),
     kind: z.enum(KIND_VALUES)
-  })
+  }),
+  set_role: z.strictObject({ clip_id: z.string(), role: z.enum(ROLE_VALUES) }),
+  set_volume: z.strictObject({ clip_id: z.string(), volume_db: z.number().min(-96).max(12) })
 } as const
 
 type ToolName = keyof typeof SCHEMAS
@@ -171,6 +177,32 @@ export const EDIT_TOOLS: Anthropic.Tool[] = [
       },
       required: ['edit_point_index', 'duration_sec', 'kind']
     }
+  },
+  {
+    name: 'set_role',
+    description:
+      'Tag a clip (spine or connected, by id) with an audio role: dialogue, music, or sfx. Roles drive the mixer mute/solo buttons and auto-ducking targets. Looped beds already default to music.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clip_id: { type: 'string' },
+        role: { type: 'string', enum: ['dialogue', 'music', 'sfx'] }
+      },
+      required: ['clip_id', 'role']
+    }
+  },
+  {
+    name: 'set_volume',
+    description:
+      'Set a clip’s volume in dB (−96 to +12, 0 = unity). Applies to spine or connected clips by id. Use to balance levels or pull a bed down manually.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        clip_id: { type: 'string' },
+        volume_db: { type: 'number', description: 'Absolute volume in dB, 0 = unchanged gain' }
+      },
+      required: ['clip_id', 'volume_db']
+    }
   }
 ]
 
@@ -252,6 +284,27 @@ export function executeEditTool(scratch: Sequence, name: string, input: unknown)
         kind: a.kind as TransitionKind
       })
       summary = `Added ${a.duration_sec.toFixed(1)}s ${a.kind} at edit point ${a.edit_point_index}`
+      timeRefFlicks = null
+      break
+    }
+    case 'set_role': {
+      const a = args as z.infer<(typeof SCHEMAS)['set_role']>
+      result = setClipRole(scratch, { clipId: a.clip_id, role: a.role })
+      summary = `Tagged ${a.clip_id} as ${a.role}`
+      timeRefFlicks = null
+      break
+    }
+    case 'set_volume': {
+      const a = args as z.infer<(typeof SCHEMAS)['set_volume']>
+      const target =
+        scratch.spine.find((item) => item.id === a.clip_id && item.kind === 'clip') ??
+        scratch.connected.find((cc) => cc.id === a.clip_id)
+      if (target === undefined || !('fx' in target || 'assetId' in target)) {
+        return failure(scratch, `unknown-id: no clip "${a.clip_id}"`)
+      }
+      const fx = { ...DEFAULT_FX, ...(target.fx ?? {}) }
+      result = setClipFx(scratch, { clipId: a.clip_id, fx: { ...fx, volumeDb: a.volume_db } })
+      summary = `Set ${a.clip_id} volume to ${a.volume_db.toFixed(1)} dB`
       timeRefFlicks = null
       break
     }

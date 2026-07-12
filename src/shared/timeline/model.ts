@@ -9,6 +9,14 @@ import type { Rational } from '../timecode'
  * spine is contiguous and overlap-free by construction.
  */
 
+/**
+ * Audio role — FCP-style metadata grouping, not track assignment. Roles drive
+ * mixer-level mute/solo and auto-ducking targets. Every audible clip has an
+ * EFFECTIVE role (explicit tag, or derived: looped bed → music, else
+ * dialogue); gaps and titles have none.
+ */
+export type ClipRole = 'dialogue' | 'music' | 'sfx'
+
 /** The nine video/color scalars that can carry keyframe animation. */
 export type AnimatableParam =
   | 'posX'
@@ -72,6 +80,8 @@ export interface Clip {
   fx?: ClipFx
   /** True after Detach Audio: the clip renders video only (audio lives in a lane −1 connected clip). */
   audioDisabled?: boolean
+  /** Explicit audio role tag; absent = derived by effectiveRole(). */
+  role?: ClipRole
 }
 
 export interface GapClip {
@@ -105,6 +115,8 @@ export interface ConnectedClip {
    * lifted); clearing the flag clamps the duration back into the source.
    */
   loop?: boolean
+  /** Explicit audio role tag; absent = derived by effectiveRole(). */
+  role?: ClipRole
 }
 
 export type TransitionKind = 'dissolve' | 'wipeL' | 'wipeR' | 'fadeBlack'
@@ -154,6 +166,21 @@ export interface Sequence {
   connected: ConnectedClip[]
   transitions?: Transition[]
   captions?: CaptionSettings
+  /** Roles silenced in the mix (mute/solo UI); sorted, deduped. */
+  mutedRoles?: ClipRole[]
+}
+
+/**
+ * The audio role a timeline item actually carries: explicit tag wins, looped
+ * connected clips are music beds, everything else audible is dialogue. Gaps
+ * and titles return null — there is nothing to hear.
+ */
+export function effectiveRole(item: SpineItem | ConnectedClip): ClipRole | null {
+  if ('kind' in item && item.kind === 'gap') return null
+  if ('titleData' in item && item.titleData !== undefined) return null
+  if (item.role !== undefined) return item.role
+  if ('loop' in item && item.loop === true) return 'music'
+  return 'dialogue'
 }
 
 export function emptySequence(id: string, fps: Rational): Sequence {

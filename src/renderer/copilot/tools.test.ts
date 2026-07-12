@@ -70,6 +70,32 @@ describe('executeEditTool', () => {
     expect(outcome.ok).toBe(false)
     expect(outcome.resultText).toContain('unknown tool')
   })
+
+  it('set_role tags a clip with an audio role', () => {
+    const outcome = executeEditTool(base, 'set_role', { clip_id: 'a', role: 'music' })
+    expect(outcome.ok).toBe(true)
+    const item = outcome.next.spine[0]
+    expect(item.kind === 'clip' && item.role).toBe('music')
+    expect(outcome.summary).toContain('music')
+  })
+
+  it('set_role rejects an unknown clip and an invalid role', () => {
+    expect(executeEditTool(base, 'set_role', { clip_id: 'zzz', role: 'music' }).ok).toBe(false)
+    expect(executeEditTool(base, 'set_role', { clip_id: 'a', role: 'narration' }).ok).toBe(false)
+  })
+
+  it('set_volume writes volumeDb while preserving the rest of the fx', () => {
+    const withFade = executeEditTool(base, 'set_volume', { clip_id: 'b', volume_db: -6 })
+    expect(withFade.ok).toBe(true)
+    const item = withFade.next.spine[1]
+    expect(item.kind === 'clip' && item.fx?.volumeDb).toBe(-6)
+    expect(withFade.summary).toContain('-6.0 dB')
+  })
+
+  it('set_volume rejects out-of-range values and unknown clips', () => {
+    expect(executeEditTool(base, 'set_volume', { clip_id: 'a', volume_db: 40 }).ok).toBe(false)
+    expect(executeEditTool(base, 'set_volume', { clip_id: 'zzz', volume_db: 0 }).ok).toBe(false)
+  })
 })
 
 describe('EDIT_TOOLS', () => {

@@ -334,6 +334,36 @@ export function TimelinePanel(): ReactNode {
             </button>
           ))}
         </span>
+        <span className="timeline-role-mutes">
+          {(
+            [
+              ['dialogue', 'Dia'],
+              ['music', 'Mus'],
+              ['sfx', 'SFX']
+            ] as const
+          ).map(([role, label]) => {
+            const muted = sequence?.mutedRoles?.includes(role) ?? false
+            return (
+              <button
+                key={role}
+                type="button"
+                className={muted ? 'role-muted' : ''}
+                data-testid={`role-mute-${role}`}
+                title={`${muted ? 'Unmute' : 'Mute'} every ${role} clip in the mix`}
+                onClick={() => {
+                  const current = useTimelineStore.getState().sequence?.mutedRoles ?? []
+                  useTimelineStore
+                    .getState()
+                    .setRoleMutes(
+                      muted ? current.filter((r) => r !== role) : [...current, role]
+                    )
+                }}
+              >
+                {muted ? `${label} ✕` : label}
+              </button>
+            )
+          })}
+        </span>
         <span className="spacer" />
         <span data-testid="timeline-zoom" className="timeline-indicator">
           {Math.round(zoomPxPerSec)} px/s

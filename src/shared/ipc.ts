@@ -87,6 +87,8 @@ const transitionSchema = z.object({
   kind: z.enum(['dissolve', 'wipeL', 'wipeR', 'fadeBlack'])
 })
 
+const clipRoleSchema = z.enum(['dialogue', 'music', 'sfx'])
+
 const spineClipSchema = z.object({
   kind: z.literal('clip'),
   id: z.string().min(1),
@@ -96,7 +98,8 @@ const spineClipSchema = z.object({
   sourceDurationFlicks: z.number().positive(),
   fx: clipFxSchema.optional(),
   /** Detach Audio: video-only spine clip; its audio lives in a lane −1 connected clip. */
-  audioDisabled: z.boolean().optional()
+  audioDisabled: z.boolean().optional(),
+  role: clipRoleSchema.optional()
 })
 
 const gapClipSchema = z.object({
@@ -118,7 +121,8 @@ const connectedClipSchema = z.object({
   titleData: titleDataSchema.optional(),
   audioDisabled: z.boolean().optional(),
   /** Loop-to-fill music bed (z.object strips unknown keys — must be declared). */
-  loop: z.boolean().optional()
+  loop: z.boolean().optional(),
+  role: clipRoleSchema.optional()
 })
 
 const captionSettingsSchema = z.object({
@@ -139,7 +143,8 @@ export const sequenceSchema = z.object({
   transitions: z.array(transitionSchema).optional(),
   // z.object strips unknown keys on the saveSequence round-trip, so every
   // sequence-level field MUST be declared here or it is silently lost
-  captions: captionSettingsSchema.optional()
+  captions: captionSettingsSchema.optional(),
+  mutedRoles: z.array(clipRoleSchema).optional()
 })
 
 export const saveSequencePayloadSchema = z.object({

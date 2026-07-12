@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
-import type {
-  AnimatableParam,
-  CaptionSettings,
-  ClipFx,
-  Sequence,
-  TitleData
+import {
+  effectiveRole,
+  type AnimatableParam,
+  type CaptionSettings,
+  type ClipFx,
+  type ClipRole,
+  type Sequence,
+  type TitleData
 } from '../../shared/timeline/model'
 import { DEFAULT_CAPTIONS, DEFAULT_FX } from '../../shared/timeline/ops'
 import { adjacentKeyframeTime, evaluateFxAt, upsertKeyframe } from '../../shared/timeline/fx-eval'
@@ -51,6 +53,13 @@ const AUDIO_FIELDS: FieldDef[] = [
   { key: 'volumeDb', label: 'Volume dB', step: 1 },
   { key: 'pan', label: 'Pan', step: 0.1 }
 ]
+
+const ROLE_VALUES: ClipRole[] = ['dialogue', 'music', 'sfx']
+const ROLE_LABELS: Record<ClipRole, string> = {
+  dialogue: 'Dialogue',
+  music: 'Music',
+  sfx: 'SFX'
+}
 
 /** "2 min ago" style stamp for the session-only AI attribution line. */
 function relativeTime(atMs: number): string {
@@ -276,6 +285,26 @@ export function InspectorPanel(): ReactNode {
         {activeTab === 'audio' && (
           <>
             <div className="inspector-section">Audio</div>
+            {titleData === undefined && (
+              <label className="fx-field">
+                <span>Role</span>
+                <span className="role-picker">
+                  {ROLE_VALUES.map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      data-testid={`role-${role}`}
+                      className={
+                        effectiveRole((spineClip ?? connectedClip)!) === role ? 'active' : ''
+                      }
+                      onClick={() => useTimelineStore.getState().setRole(selectedId, role)}
+                    >
+                      {ROLE_LABELS[role]}
+                    </button>
+                  ))}
+                </span>
+              </label>
+            )}
             {AUDIO_FIELDS.map(numberField)}
             <label className="fx-field">
               <span>Fade In s</span>

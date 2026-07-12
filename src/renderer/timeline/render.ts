@@ -1,5 +1,10 @@
 import { FLICKS_PER_SECOND, flicksToTimecode } from '../../shared/timecode'
-import { sequenceDuration, type Sequence } from '../../shared/timeline/model'
+import {
+  effectiveRole,
+  sequenceDuration,
+  type ClipRole,
+  type Sequence
+} from '../../shared/timeline/model'
 import { MINIMAP_H, minimapLayout } from './minimap'
 import { keyframeMarkerTimes } from '../../shared/timeline/fx-eval'
 import { spineStartIndex } from '../../shared/timeline/magnetic'
@@ -14,6 +19,12 @@ import { peaksFor, stripImageFor } from './media-cache'
  * order: ruler, lanes, spine, clip bodies, selection, guides, skimmer,
  * playhead.
  */
+
+/** Bottom-edge stripe colors for tagged non-dialogue roles. */
+const ROLE_STRIPE: Record<Exclude<ClipRole, 'dialogue'>, string> = {
+  music: '#d4a017',
+  sfx: '#4dd0e1'
+}
 
 export const RULER_H = 26
 export const LANE_H = 32
@@ -35,6 +46,8 @@ export interface ClipRect {
   isGap: boolean
   /** Source duration of a LOOPED connected clip — drives the seam tick marks. */
   loopSourceFlicks?: number
+  /** Effective audio role; null for gaps/titles. Drives the role stripe + mute dim. */
+  role?: ClipRole | null
 }
 
 export interface DragGhost {
@@ -361,7 +374,8 @@ export function computeClipRects(state: RenderState): ClipRect[] {
       assetId: item.kind === 'clip' ? item.assetId : null,
       mediaInFlicks: item.kind === 'clip' ? item.mediaInFlicks : 0,
       durationFlicks: item.durationFlicks,
-      isGap: item.kind === 'gap'
+      isGap: item.kind === 'gap',
+      role: effectiveRole(item)
     })
   }
   const startOf = spineStartIndex(state.sequence.spine)
@@ -383,7 +397,8 @@ export function computeClipRects(state: RenderState): ClipRect[] {
       assetId: cc.assetId,
       mediaInFlicks: cc.mediaInFlicks,
       durationFlicks: cc.durationFlicks,
-      isGap: false
+      isGap: false,
+      role: effectiveRole(cc)
     }
     if (cc.loop === true) rect.loopSourceFlicks = cc.sourceDurationFlicks
     rects.push(rect)
@@ -563,6 +578,21 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
       rect.durationFlicks,
       rect.isGap
     )
+  }
+
+  // role stripes (music/sfx tags) + mute dimming — dialogue stays unmarked
+  const mutedRoles = new Set(state.sequence.mutedRoles ?? [])
+  for (const rect of rects) {
+    if (rect.role === null || rect.role === undefined || rect.isGap) continue
+    if (rect.role !== 'dialogue') {
+      ctx.fillStyle = ROLE_STRIPE[rect.role]
+      ctx.fillRect(rect.x + 1, rect.y + rect.h - 3, Math.max(1, rect.w - 2), 2)
+    }
+    if (mutedRoles.has(rect.role)) {
+      roundedRectPath(ctx, rect.x, rect.y, rect.w, rect.h, 4)
+      ctx.fillStyle = '#00000073'
+      ctx.fill()
+    }
   }
 
   // selection highlights

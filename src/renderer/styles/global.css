@@ -935,6 +935,38 @@ select,
   padding: 1px 4px;
 }
 
+.timeline-role-mutes {
+  display: flex;
+  gap: 2px;
+  margin-left: 10px;
+}
+
+.timeline-role-mutes button {
+  padding: 1px 6px;
+  font-size: var(--font-size-small);
+}
+
+.timeline-role-mutes button.role-muted {
+  color: #ff6b6b;
+  border-color: #ff6b6b;
+  text-decoration: line-through;
+}
+
+.role-picker {
+  display: flex;
+  gap: 2px;
+}
+
+.role-picker button {
+  padding: 1px 6px;
+  font-size: var(--font-size-small);
+}
+
+.role-picker button.active {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
 /* ---- Sequence playback (phase 7) ---- */
 .sequence-canvas {
   max-width: 95%;

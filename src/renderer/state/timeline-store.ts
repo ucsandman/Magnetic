@@ -33,6 +33,8 @@ import {
   rippleDeleteRange,
   roll,
   setClipFx,
+  setClipRole,
+  setMutedRoles,
   setTitleData,
   setTransitionKind,
   slip,
@@ -44,6 +46,7 @@ import {
 import type {
   CaptionSettings,
   ClipFx,
+  ClipRole,
   TitleData,
   TransitionKind
 } from '../../shared/timeline/model'
@@ -117,6 +120,10 @@ interface TimelineStore {
   loopPlayback: boolean
   setLoopPlayback(loop: boolean): void
   setFx(clipId: string, fx: ClipFx): void
+  /** Tag a clip's audio role (undoable). */
+  setRole(clipId: string, role: ClipRole): void
+  /** Replace the set of muted roles (mute/solo buttons; undoable). */
+  setRoleMutes(roles: ClipRole[]): void
   setTitle(clipId: string, titleData: TitleData): void
   /** Sequence-level burned-in caption settings (undoable). */
   setCaptions(captions: CaptionSettings): void
@@ -424,6 +431,14 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 
     setFx(clipId, fx) {
       apply((seq) => setClipFx(seq, { clipId, fx }))
+    },
+
+    setRole(clipId, role) {
+      apply((seq) => setClipRole(seq, { clipId, role }))
+    },
+
+    setRoleMutes(roles) {
+      apply((seq) => setMutedRoles(seq, { roles }))
     },
 
     setTitle(clipId, titleData) {

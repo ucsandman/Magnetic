@@ -1,5 +1,5 @@
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
-import type { Sequence } from '../../shared/timeline/model'
+import { effectiveRole, type Sequence } from '../../shared/timeline/model'
 import type { AudioEnvelope, Transcript } from '../../shared/types'
 import { detectSilence } from '../silence/detect'
 import { projectTranscript } from '../transcript/projection'
@@ -57,7 +57,10 @@ export function buildCopilotContext(
       continue
     }
     const name = assetNames.get(item.assetId) ?? item.assetId
-    const notes = item.audioDisabled === true ? ' [audio detached]' : ''
+    const role = effectiveRole(item)
+    const notes =
+      (item.audioDisabled === true ? ' [audio detached]' : '') +
+      (role !== null && role !== 'dialogue' ? ` [role: ${role}]` : '')
     lines.push(
       `${index}. ${name} [id=${item.id}] — ${fmtTime(start)} to ${fmtTime(position)} (${fmtDur(item.durationFlicks)}), source in ${fmtTime(item.mediaInFlicks)}${notes}`
     )
@@ -68,12 +71,15 @@ export function buildCopilotContext(
   if (sequence.connected.length > 0) {
     lines.push('', '## Connected clips')
     for (const cc of sequence.connected) {
+      const role = effectiveRole(cc)
       const label =
         cc.titleData !== undefined
           ? `title "${cc.titleData.text}"`
-          : (assetNames.get(cc.assetId) ?? cc.assetId) + (cc.loop === true ? ' (looped bed)' : '')
+          : (assetNames.get(cc.assetId) ?? cc.assetId) +
+            (cc.loop === true ? ' (looped bed)' : '') +
+            (role !== null && role !== 'dialogue' ? ` [role: ${role}]` : '')
       lines.push(
-        `- ${label}, lane ${cc.lane}, ${fmtDur(cc.durationFlicks)} attached to ${cc.parentClipId}`
+        `- ${label} [id=${cc.id}], lane ${cc.lane}, ${fmtDur(cc.durationFlicks)} attached to ${cc.parentClipId}`
       )
     }
   }
