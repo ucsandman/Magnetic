@@ -1,5 +1,5 @@
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
-import { effectiveRole, type Sequence } from '../../shared/timeline/model'
+import { effectiveRole, visibleMarkers, type Sequence } from '../../shared/timeline/model'
 import type { AudioEnvelope, Transcript } from '../../shared/types'
 import { detectSilence } from '../silence/detect'
 import { projectTranscript } from '../transcript/projection'
@@ -80,6 +80,16 @@ export function buildCopilotContext(
             (role !== null && role !== 'dialogue' ? ` [role: ${role}]` : '')
       lines.push(
         `- ${label} [id=${cc.id}], lane ${cc.lane}, ${fmtDur(cc.durationFlicks)} attached to ${cc.parentClipId}`
+      )
+    }
+  }
+
+  const markers = visibleMarkers(sequence)
+  if (markers.length > 0) {
+    lines.push('', '## Markers')
+    for (const { marker, seqFlicks } of markers) {
+      lines.push(
+        `- [${marker.color}] ${fmtTime(seqFlicks)} [id=${marker.id}]${marker.text.length > 0 ? ` — ${marker.text}` : ''}`
       )
     }
   }

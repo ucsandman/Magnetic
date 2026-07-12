@@ -11,7 +11,15 @@ import type {
   Transition,
   TransitionKind
 } from './model'
-import { connectedStartOf, sequenceDuration, spineIndexOf, spineStartOf } from './model'
+import {
+  connectedStartOf,
+  markerIsVisible,
+  sequenceDuration,
+  spineIndexOf,
+  spineStartOf,
+  type Marker,
+  type MarkerColor
+} from './model'
 import { itemAtTime, reattachByTime, resolveLaneCollisions } from './magnetic'
 import { editPointIndexOfCut, editPointInfo, pruneTransitions, transitionsOf } from './transitions'
 
@@ -56,6 +64,12 @@ function ok(
   // spine edits can remove cuts or shrink handles — keep transitions valid
   const pruned = pruneTransitions(next)
   if (pruned !== undefined) next.transitions = pruned
+  // markers whose media moment no clip shows any more disappear (undoably —
+  // the inverse restores the pre-edit sequence, markers included)
+  if (next.markers !== undefined && next.markers.length > 0) {
+    const kept = next.markers.filter((marker) => markerIsVisible(next, marker))
+    if (kept.length !== next.markers.length) next.markers = kept
+  }
   return {
     next,
     inverse: { type: 'restore', sequence: prev }
@@ -659,6 +673,71 @@ export function rippleDeleteRange(
     }
   }
   return ok(seq, spine, connected)
+}
+
+const MARKER_COLORS: readonly MarkerColor[] = ['blue', 'green', 'orange', 'red']
+
+/**
+ * Add a marker at a media moment some clip currently shows (undoable).
+ * Callers usually derive (assetId, atMediaFlicks) from the playhead.
+ */
+export function addMarker(
+  seq: Sequence,
+  args: { assetId: string; atMediaFlicks: number; text: string; color: MarkerColor; id?: string }
+): OpResult {
+  if (!MARKER_COLORS.includes(args.color)) {
+    return fail(seq, 'invalid-target', `unknown marker color "${args.color}"`)
+  }
+  const marker: Marker = {
+    id: args.id ?? uniqueId(new Set(seq.markers?.map((m) => m.id)), 'marker'),
+    assetId: args.assetId,
+    atMediaFlicks: args.atMediaFlicks,
+    text: args.text,
+    color: args.color
+  }
+  if (seq.markers?.some((existing) => existing.id === marker.id) === true) {
+    return fail(seq, 'duplicate-id', `marker id "${marker.id}" already exists`)
+  }
+  if (!markerIsVisible(seq, marker)) {
+    return fail(seq, 'invalid-target', 'no clip is showing that media moment')
+  }
+  return {
+    next: { ...seq, markers: [...(seq.markers ?? []), marker] },
+    inverse: { type: 'restore', sequence: seq }
+  }
+}
+
+export function removeMarker(seq: Sequence, args: { markerId: string }): OpResult {
+  const markers = seq.markers ?? []
+  const kept = markers.filter((marker) => marker.id !== args.markerId)
+  if (kept.length === markers.length) {
+    return fail(seq, 'unknown-id', `no marker "${args.markerId}"`)
+  }
+  return {
+    next: { ...seq, markers: kept },
+    inverse: { type: 'restore', sequence: seq }
+  }
+}
+
+export function updateMarker(
+  seq: Sequence,
+  args: { markerId: string; text?: string; color?: MarkerColor }
+): OpResult {
+  if (args.color !== undefined && !MARKER_COLORS.includes(args.color)) {
+    return fail(seq, 'invalid-target', `unknown marker color "${args.color}"`)
+  }
+  const index = (seq.markers ?? []).findIndex((marker) => marker.id === args.markerId)
+  if (index === -1) return fail(seq, 'unknown-id', `no marker "${args.markerId}"`)
+  const markers = [...seq.markers!]
+  markers[index] = {
+    ...markers[index],
+    ...(args.text !== undefined ? { text: args.text } : {}),
+    ...(args.color !== undefined ? { color: args.color } : {})
+  }
+  return {
+    next: { ...seq, markers },
+    inverse: { type: 'restore', sequence: seq }
+  }
 }
 
 const ROLE_VALUES: readonly ClipRole[] = ['dialogue', 'music', 'sfx']

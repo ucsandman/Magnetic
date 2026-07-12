@@ -121,6 +121,17 @@ describe('sequenceSchema role round-trip', () => {
     const result = sequenceSchema.safeParse({ ...base, mutedRoles: ['narration'] })
     expect(result.success).toBe(false)
   })
+
+  it('preserves markers through parse', () => {
+    const sequence: Sequence = {
+      ...base,
+      markers: [
+        { id: 'm1', assetId: 'asset-a', atMediaFlicks: 1_000, text: 'fix this', color: 'red' }
+      ]
+    }
+    const parsed = sequenceSchema.parse(sequence)
+    expect(parsed).toEqual(sequence)
+  })
 })
 
 /** Same z.object-strips-keys trap for connected-clip fields: pin `loop`. */

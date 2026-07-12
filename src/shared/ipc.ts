@@ -89,6 +89,14 @@ const transitionSchema = z.object({
 
 const clipRoleSchema = z.enum(['dialogue', 'music', 'sfx'])
 
+const markerSchema = z.object({
+  id: z.string().min(1),
+  assetId: z.string().min(1),
+  atMediaFlicks: z.number().nonnegative(),
+  text: z.string(),
+  color: z.enum(['blue', 'green', 'orange', 'red'])
+})
+
 const spineClipSchema = z.object({
   kind: z.literal('clip'),
   id: z.string().min(1),
@@ -144,7 +152,8 @@ export const sequenceSchema = z.object({
   // z.object strips unknown keys on the saveSequence round-trip, so every
   // sequence-level field MUST be declared here or it is silently lost
   captions: captionSettingsSchema.optional(),
-  mutedRoles: z.array(clipRoleSchema).optional()
+  mutedRoles: z.array(clipRoleSchema).optional(),
+  markers: z.array(markerSchema).optional()
 })
 
 export const saveSequencePayloadSchema = z.object({

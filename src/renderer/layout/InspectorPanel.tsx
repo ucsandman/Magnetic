@@ -1,15 +1,17 @@
 import { useState, type ReactNode } from 'react'
-import { FLICKS_PER_SECOND } from '../../shared/timecode'
+import { FLICKS_PER_SECOND, flicksPerFrame } from '../../shared/timecode'
 import {
   effectiveRole,
+  visibleMarkers,
   type AnimatableParam,
   type CaptionSettings,
   type ClipFx,
   type ClipRole,
+  type MarkerColor,
   type Sequence,
   type TitleData
 } from '../../shared/timeline/model'
-import { DEFAULT_CAPTIONS, DEFAULT_FX } from '../../shared/timeline/ops'
+import { DEFAULT_CAPTIONS, DEFAULT_FX, removeMarker, updateMarker } from '../../shared/timeline/ops'
 import { adjacentKeyframeTime, evaluateFxAt, upsertKeyframe } from '../../shared/timeline/fx-eval'
 import { buildCues } from '../captions/cues'
 import { toSrt, toVtt } from '../captions/format'
@@ -110,7 +112,10 @@ export function InspectorPanel(): ReactNode {
           {sequence === null ? (
             <span>Nothing selected</span>
           ) : (
-            <CaptionFields sequence={sequence} />
+            <>
+              <MarkerFields sequence={sequence} />
+              <CaptionFields sequence={sequence} />
+            </>
           )}
         </div>
       </Panel>
@@ -257,6 +262,7 @@ export function InspectorPanel(): ReactNode {
       }
     >
       <div className="inspector-video">
+        <MarkerFields sequence={sequence} />
         {attribution !== undefined && (
           <div className="inspector-attribution" data-testid="inspector-attribution">
             <span className="roughcut-ai-badge">AI</span> Edited by {attribution.actor} ·{' '}
@@ -344,6 +350,62 @@ export function InspectorPanel(): ReactNode {
         {activeTab === 'captions' && <CaptionFields sequence={sequence} />}
       </div>
     </Panel>
+  )
+}
+
+const MARKER_COLORS: MarkerColor[] = ['blue', 'green', 'orange', 'red']
+
+/**
+ * Editor for the marker under the playhead (within half a frame). Clicking a
+ * ruler diamond seeks to it, which brings this editor up — no context menus.
+ */
+function MarkerFields({ sequence }: { sequence: Sequence }): ReactNode {
+  const playheadFlicks = useTimelineStore((state) => state.playheadFlicks)
+  const half = flicksPerFrame(sequence.fps) / 2
+  const atPlayhead = visibleMarkers(sequence).find(
+    (entry) => Math.abs(entry.seqFlicks - playheadFlicks) <= half
+  )
+  if (atPlayhead === undefined) return null
+  const marker = atPlayhead.marker
+  const applyOp = useTimelineStore.getState().applyOp
+  return (
+    <div className="inspector-marker" data-testid="inspector-marker">
+      <div className="inspector-section">Marker</div>
+      <label className="fx-field">
+        <span>Note</span>
+        <input
+          type="text"
+          data-testid="marker-text"
+          value={marker.text}
+          placeholder="What needs attention here?"
+          onChange={(event) =>
+            applyOp((seq) => updateMarker(seq, { markerId: marker.id, text: event.target.value }))
+          }
+        />
+      </label>
+      <label className="fx-field">
+        <span>Color</span>
+        <span className="marker-colors">
+          {MARKER_COLORS.map((color) => (
+            <button
+              key={color}
+              type="button"
+              data-testid={`marker-color-${color}`}
+              className={`marker-swatch marker-${color}${marker.color === color ? ' active' : ''}`}
+              title={color}
+              onClick={() => applyOp((seq) => updateMarker(seq, { markerId: marker.id, color }))}
+            />
+          ))}
+        </span>
+      </label>
+      <button
+        type="button"
+        data-testid="marker-delete"
+        onClick={() => applyOp((seq) => removeMarker(seq, { markerId: marker.id }))}
+      >
+        Delete Marker
+      </button>
+    </div>
   )
 }
 

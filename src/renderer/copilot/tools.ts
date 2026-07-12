@@ -3,10 +3,12 @@ import { z } from 'zod'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import type { Sequence, TransitionKind } from '../../shared/timeline/model'
 import {
+  addMarker,
   addTransition,
   blade,
   DEFAULT_FX,
   move,
+  removeMarker,
   rippleDelete,
   rippleDeleteRange,
   roll,
@@ -16,6 +18,7 @@ import {
   trimRipple,
   type OpResult
 } from '../../shared/timeline/ops'
+import { clipAtTime, spineStartOf } from '../../shared/timeline/model'
 import { validateSequence } from '../../shared/timeline/validate'
 
 /**
@@ -58,6 +61,7 @@ const failure = (scratch: Sequence, resultText: string): ToolOutcome => ({
 
 const KIND_VALUES = ['dissolve', 'wipeL', 'wipeR', 'fadeBlack'] as const
 const ROLE_VALUES = ['dialogue', 'music', 'sfx'] as const
+const MARKER_COLOR_VALUES = ['blue', 'green', 'orange', 'red'] as const
 
 const SCHEMAS = {
   ripple_delete_range: z.strictObject({ from_sec: z.number().min(0), to_sec: z.number().min(0) }),
@@ -77,7 +81,13 @@ const SCHEMAS = {
     kind: z.enum(KIND_VALUES)
   }),
   set_role: z.strictObject({ clip_id: z.string(), role: z.enum(ROLE_VALUES) }),
-  set_volume: z.strictObject({ clip_id: z.string(), volume_db: z.number().min(-96).max(12) })
+  set_volume: z.strictObject({ clip_id: z.string(), volume_db: z.number().min(-96).max(12) }),
+  add_marker: z.strictObject({
+    at_sec: z.number().min(0),
+    text: z.string(),
+    color: z.enum(MARKER_COLOR_VALUES).optional()
+  }),
+  remove_marker: z.strictObject({ marker_id: z.string() })
 } as const
 
 type ToolName = keyof typeof SCHEMAS
@@ -192,6 +202,30 @@ export const EDIT_TOOLS: Anthropic.Tool[] = [
     }
   },
   {
+    name: 'add_marker',
+    description:
+      'Drop a marker at a sequence time on the clip playing there — use to flag review notes, sync points, or spots the human should look at. Colors: blue (default), green, orange, red. Markers ride the media through later edits.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        at_sec: { type: 'number', description: 'Sequence time in seconds' },
+        text: { type: 'string', description: 'The note shown to the human' },
+        color: { type: 'string', enum: ['blue', 'green', 'orange', 'red'] }
+      },
+      required: ['at_sec', 'text']
+    }
+  },
+  {
+    name: 'remove_marker',
+    description:
+      'Remove a marker by id (marker ids are listed in the timeline context under Markers).',
+    input_schema: {
+      type: 'object',
+      properties: { marker_id: { type: 'string' } },
+      required: ['marker_id']
+    }
+  },
+  {
     name: 'set_volume',
     description:
       'Set a clip’s volume in dB (−96 to +12, 0 = unity). Applies to spine or connected clips by id. Use to balance levels or pull a bed down manually.',
@@ -291,6 +325,31 @@ export function executeEditTool(scratch: Sequence, name: string, input: unknown)
       const a = args as z.infer<(typeof SCHEMAS)['set_role']>
       result = setClipRole(scratch, { clipId: a.clip_id, role: a.role })
       summary = `Tagged ${a.clip_id} as ${a.role}`
+      timeRefFlicks = null
+      break
+    }
+    case 'add_marker': {
+      const a = args as z.infer<(typeof SCHEMAS)['add_marker']>
+      const at = sec(a.at_sec)
+      const item = clipAtTime(scratch, at)
+      if (item === null || item.kind !== 'clip') {
+        return failure(scratch, `invalid-target: no spine clip at ${fmtTime(at)}`)
+      }
+      const start = spineStartOf(scratch, item.id) ?? 0
+      result = addMarker(scratch, {
+        assetId: item.assetId,
+        atMediaFlicks: item.mediaInFlicks + (at - start),
+        text: a.text,
+        color: a.color ?? 'blue'
+      })
+      summary = `Added a ${a.color ?? 'blue'} marker at ${fmtTime(at)}: "${a.text}"`
+      timeRefFlicks = at
+      break
+    }
+    case 'remove_marker': {
+      const a = args as z.infer<(typeof SCHEMAS)['remove_marker']>
+      result = removeMarker(scratch, { markerId: a.marker_id })
+      summary = `Removed marker ${a.marker_id}`
       timeRefFlicks = null
       break
     }

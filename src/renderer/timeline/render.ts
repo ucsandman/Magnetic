@@ -2,7 +2,9 @@ import { FLICKS_PER_SECOND, flicksToTimecode } from '../../shared/timecode'
 import {
   effectiveRole,
   sequenceDuration,
+  visibleMarkers,
   type ClipRole,
+  type MarkerColor,
   type Sequence
 } from '../../shared/timeline/model'
 import { MINIMAP_H, minimapLayout } from './minimap'
@@ -763,6 +765,32 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
       ctx.fillText('AI', x, RULER_H - 7 + 1)
     }
     ctx.textAlign = 'left'
+  }
+
+  // markers: color-coded diamonds in the ruler at each visible marker's
+  // sequence time — after drawRuler so the ruler background doesn't paint
+  // over them; clicking the ruler seeks, so a click on a diamond lands the
+  // playhead on the marker (which opens its editor in the Inspector)
+  const MARKER_COLOR_HEX: Record<MarkerColor, string> = {
+    blue: '#0a84ff',
+    green: '#30d158',
+    orange: '#ff9f0a',
+    red: '#ff453a'
+  }
+  for (const { marker, seqFlicks } of visibleMarkers(state.sequence)) {
+    const x = timeToX(state, seqFlicks)
+    if (x < -6 || x > state.width + 6) continue
+    ctx.fillStyle = MARKER_COLOR_HEX[marker.color]
+    ctx.beginPath()
+    ctx.moveTo(x, RULER_H - 13)
+    ctx.lineTo(x + 4.5, RULER_H - 8)
+    ctx.lineTo(x, RULER_H - 3)
+    ctx.lineTo(x - 4.5, RULER_H - 8)
+    ctx.closePath()
+    ctx.fill()
+    ctx.strokeStyle = '#00000088'
+    ctx.lineWidth = 1
+    ctx.stroke()
   }
 
   // agent playhead: where the copilot is currently working (streaming turns)

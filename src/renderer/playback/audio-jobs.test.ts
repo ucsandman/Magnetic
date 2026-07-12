@@ -7,10 +7,11 @@ describe('collectAudioJobs role muting', () => {
 
   it('includes every audible clip when nothing is muted', () => {
     const sequence = seq([clip('a', 100)], [music])
-    expect(collectAudioJobs(sequence).map((job) => job.assetId).sort()).toEqual([
-      'asset-a',
-      'asset-m'
-    ])
+    expect(
+      collectAudioJobs(sequence)
+        .map((job) => job.assetId)
+        .sort()
+    ).toEqual(['asset-a', 'asset-m'])
   })
 
   it('drops music-role clips when music is muted', () => {
@@ -26,9 +27,10 @@ describe('collectAudioJobs role muting', () => {
   it('respects an explicit role over the loop heuristic', () => {
     const tagged = { ...music, role: 'sfx' as const }
     const sequence = { ...seq([clip('a', 100)], [tagged]), mutedRoles: ['music' as const] }
-    expect(collectAudioJobs(sequence).map((job) => job.assetId).sort()).toEqual([
-      'asset-a',
-      'asset-m'
-    ])
+    expect(
+      collectAudioJobs(sequence)
+        .map((job) => job.assetId)
+        .sort()
+    ).toEqual(['asset-a', 'asset-m'])
   })
 })

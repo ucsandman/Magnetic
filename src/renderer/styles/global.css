@@ -967,6 +967,45 @@ select,
   border-color: var(--color-accent);
 }
 
+.marker-colors {
+  display: flex;
+  gap: 4px;
+}
+
+.marker-swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+.marker-swatch.active {
+  border-color: #ffffff;
+}
+
+.marker-blue {
+  background: #0a84ff;
+}
+
+.marker-green {
+  background: #30d158;
+}
+
+.marker-orange {
+  background: #ff9f0a;
+}
+
+.marker-red {
+  background: #ff453a;
+}
+
+.inspector-marker {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+
 /* ---- Sequence playback (phase 7) ---- */
 .sequence-canvas {
   max-width: 95%;

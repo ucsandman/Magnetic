@@ -17,6 +17,7 @@ import {
 } from '../../shared/timeline/clipboard'
 import { rebaseKeyframes } from '../../shared/timeline/fx-eval'
 import {
+  addMarker,
   addTransition,
   append,
   blade,
@@ -122,6 +123,8 @@ interface TimelineStore {
   setFx(clipId: string, fx: ClipFx): void
   /** Tag a clip's audio role (undoable). */
   setRole(clipId: string, role: ClipRole): void
+  /** Drop a blue marker on the spine clip under the playhead (M). */
+  addMarkerAtPlayhead(): void
   /** Replace the set of muted roles (mute/solo buttons; undoable). */
   setRoleMutes(roles: ClipRole[]): void
   setTitle(clipId: string, titleData: TitleData): void
@@ -435,6 +438,23 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
 
     setRole(clipId, role) {
       apply((seq) => setClipRole(seq, { clipId, role }))
+    },
+
+    addMarkerAtPlayhead() {
+      const { sequence, playheadFlicks } = get()
+      if (sequence === null) return
+      const item = clipAtTime(sequence, playheadFlicks)
+      if (item === null || item.kind !== 'clip') return
+      const start = spineStartOf(sequence, item.id)
+      if (start === null) return
+      apply((seq) =>
+        addMarker(seq, {
+          assetId: item.assetId,
+          atMediaFlicks: item.mediaInFlicks + (playheadFlicks - start),
+          text: '',
+          color: 'blue'
+        })
+      )
     },
 
     setRoleMutes(roles) {

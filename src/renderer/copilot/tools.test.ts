@@ -96,6 +96,27 @@ describe('executeEditTool', () => {
     expect(executeEditTool(base, 'set_volume', { clip_id: 'a', volume_db: 40 }).ok).toBe(false)
     expect(executeEditTool(base, 'set_volume', { clip_id: 'zzz', volume_db: 0 }).ok).toBe(false)
   })
+
+  it('add_marker anchors a note to the clip playing at the given time', () => {
+    const outcome = executeEditTool(base, 'add_marker', {
+      at_sec: 2,
+      text: 'check this cut',
+      color: 'red'
+    })
+    expect(outcome.ok).toBe(true)
+    expect(outcome.next.markers).toHaveLength(1)
+    expect(outcome.next.markers?.[0].color).toBe('red')
+    expect(outcome.timeRefFlicks).toBe(2 * 705_600_000)
+  })
+
+  it('remove_marker deletes by id and fails on unknown ids', () => {
+    const withMarker = executeEditTool(base, 'add_marker', { at_sec: 2, text: 'x' }).next
+    const markerId = withMarker.markers![0].id
+    const removed = executeEditTool(withMarker, 'remove_marker', { marker_id: markerId })
+    expect(removed.ok).toBe(true)
+    expect(removed.next.markers).toHaveLength(0)
+    expect(executeEditTool(base, 'remove_marker', { marker_id: 'zzz' }).ok).toBe(false)
+  })
 })
 
 describe('EDIT_TOOLS', () => {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { flicksToTimecode } from '../../shared/timecode'
-import { spineEditPoints } from '../../shared/timeline/model'
+import { spineEditPoints, visibleMarkers } from '../../shared/timeline/model'
 import { AgentProposalBanner } from '../copilot/AgentProposalBanner'
 import { playbackEngine } from '../playback/engine'
 import { goToSequenceEnd, seekSequence, toggleSequencePlayback } from '../playback/transport'
@@ -289,6 +289,38 @@ export function TimelinePanel(): ReactNode {
         when: notEditable,
         handler: () => store().pasteAttributes()
       }),
+      registerShortcut('timeline-add-marker', {
+        combo: 'm',
+        description: 'Add a marker at the playhead',
+        when: sourceViewerNotFocused,
+        handler: () => store().addMarkerAtPlayhead()
+      }),
+      registerShortcut('timeline-prev-marker', {
+        combo: 'ctrl+;',
+        description: 'Move the playhead to the previous marker',
+        when: sourceViewerNotFocused,
+        handler: () => {
+          const seq = store().sequence
+          if (seq === null) return
+          const playhead = store().playheadFlicks
+          const prev = visibleMarkers(seq)
+            .reverse()
+            .find((entry) => entry.seqFlicks < playhead)
+          if (prev !== undefined) seekSequence(seq, snapshotRef.current, prev.seqFlicks)
+        }
+      }),
+      registerShortcut('timeline-next-marker', {
+        combo: "ctrl+'",
+        description: 'Move the playhead to the next marker',
+        when: sourceViewerNotFocused,
+        handler: () => {
+          const seq = store().sequence
+          if (seq === null) return
+          const playhead = store().playheadFlicks
+          const next = visibleMarkers(seq).find((entry) => entry.seqFlicks > playhead)
+          if (next !== undefined) seekSequence(seq, snapshotRef.current, next.seqFlicks)
+        }
+      }),
       registerShortcut('timeline-detach-audio', {
         combo: 'ctrl+shift+s',
         description: 'Detach audio from the selected spine clip into the lane below',
@@ -354,9 +386,7 @@ export function TimelinePanel(): ReactNode {
                   const current = useTimelineStore.getState().sequence?.mutedRoles ?? []
                   useTimelineStore
                     .getState()
-                    .setRoleMutes(
-                      muted ? current.filter((r) => r !== role) : [...current, role]
-                    )
+                    .setRoleMutes(muted ? current.filter((r) => r !== role) : [...current, role])
                 }}
               >
                 {muted ? `${label} ✕` : label}

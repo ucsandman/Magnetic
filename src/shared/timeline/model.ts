@@ -159,6 +159,22 @@ export interface CaptionSettings {
   position: 'bottom' | 'middle' | 'top'
 }
 
+export type MarkerColor = 'blue' | 'green' | 'orange' | 'red'
+
+/**
+ * A timeline marker, anchored in MEDIA time on an asset — the same basis as
+ * keyframes, so blade/trim/ripple/move need no marker fixups. A marker shows
+ * wherever a clip window contains its media moment and is pruned (undoably)
+ * once no clip shows it.
+ */
+export interface Marker {
+  id: string
+  assetId: string
+  atMediaFlicks: number
+  text: string
+  color: MarkerColor
+}
+
 export interface Sequence {
   id: string
   fps: Rational
@@ -168,6 +184,7 @@ export interface Sequence {
   captions?: CaptionSettings
   /** Roles silenced in the mix (mute/solo UI); sorted, deduped. */
   mutedRoles?: ClipRole[]
+  markers?: Marker[]
 }
 
 /**
@@ -181,6 +198,85 @@ export function effectiveRole(item: SpineItem | ConnectedClip): ClipRole | null 
   if (item.role !== undefined) return item.role
   if ('loop' in item && item.loop === true) return 'music'
   return 'dialogue'
+}
+
+/** Media windows a marker could land in: every spine clip + connected media clip (titles/loops excluded). */
+function markerWindows(
+  seq: Sequence
+): { assetId: string; seqStartFlicks: number; mediaInFlicks: number; durationFlicks: number }[] {
+  const windows: {
+    assetId: string
+    seqStartFlicks: number
+    mediaInFlicks: number
+    durationFlicks: number
+  }[] = []
+  let position = 0
+  for (const item of seq.spine) {
+    if (item.kind === 'clip') {
+      windows.push({
+        assetId: item.assetId,
+        seqStartFlicks: position,
+        mediaInFlicks: item.mediaInFlicks,
+        durationFlicks: item.durationFlicks
+      })
+    }
+    position += item.durationFlicks
+  }
+  for (const cc of seq.connected) {
+    // titles carry no media; looped beds wrap media time, breaking the linear map
+    if (cc.titleData !== undefined || cc.loop === true) continue
+    const start = connectedStartOf(seq, cc.id)
+    if (start === null) continue
+    windows.push({
+      assetId: cc.assetId,
+      seqStartFlicks: start,
+      mediaInFlicks: cc.mediaInFlicks,
+      durationFlicks: cc.durationFlicks
+    })
+  }
+  return windows
+}
+
+/** True if some clip window currently shows this media moment. */
+export function markerIsVisible(seq: Sequence, marker: Marker): boolean {
+  return markerWindows(seq).some(
+    (window) =>
+      window.assetId === marker.assetId &&
+      marker.atMediaFlicks >= window.mediaInFlicks &&
+      marker.atMediaFlicks < window.mediaInFlicks + window.durationFlicks
+  )
+}
+
+export interface VisibleMarker {
+  marker: Marker
+  seqFlicks: number
+}
+
+/**
+ * Every marker projected into sequence time — one entry per window showing
+ * its media moment (normally one), sorted by time.
+ */
+export function visibleMarkers(seq: Sequence): VisibleMarker[] {
+  const markers = seq.markers
+  if (markers === undefined || markers.length === 0) return []
+  const windows = markerWindows(seq)
+  const visible: VisibleMarker[] = []
+  for (const marker of markers) {
+    for (const window of windows) {
+      if (window.assetId !== marker.assetId) continue
+      if (
+        marker.atMediaFlicks < window.mediaInFlicks ||
+        marker.atMediaFlicks >= window.mediaInFlicks + window.durationFlicks
+      ) {
+        continue
+      }
+      visible.push({
+        marker,
+        seqFlicks: window.seqStartFlicks + (marker.atMediaFlicks - window.mediaInFlicks)
+      })
+    }
+  }
+  return visible.sort((a, b) => a.seqFlicks - b.seqFlicks)
 }
 
 export function emptySequence(id: string, fps: Rational): Sequence {
