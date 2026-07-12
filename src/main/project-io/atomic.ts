@@ -12,7 +12,10 @@ export function writeJsonAtomic(filePath: string, value: unknown): void {
   const serialized = JSON.stringify(value, null, 2)
   mkdirSync(dirname(filePath), { recursive: true })
   const tmpPath = join(dirname(filePath), `.tmp-${process.pid}-${basenameOf(filePath)}`)
-  writeFileSync(tmpPath, serialized, 'utf8')
+  // owner-only: settings.json carries credentials (API key, agent token) and
+  // everything else here is per-user app data; mode is a no-op on Windows,
+  // where %APPDATA% ACLs already scope these files to the user
+  writeFileSync(tmpPath, serialized, { encoding: 'utf8', mode: 0o600 })
   renameWithRetry(tmpPath, filePath)
 }
 

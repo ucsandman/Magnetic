@@ -112,8 +112,10 @@ export async function startAgentSidecar(sharedToken: string): Promise<AgentSidec
   const address = httpServer.address()
   port = typeof address === 'object' && address !== null ? address.port : null
   try {
-    // discovery for the magnetic-mcp bridge (overridable via env on its side)
-    writeFileSync(discoveryPath(), JSON.stringify({ port, token }))
+    // discovery for the magnetic-mcp bridge (overridable via env on its side);
+    // owner-only: the file carries the bearer token (mode is a no-op on
+    // Windows, where %APPDATA% ACLs already scope it to the user)
+    writeFileSync(discoveryPath(), JSON.stringify({ port, token }), { mode: 0o600 })
   } catch {
     // best-effort: the Settings panel still shows port + token for manual config
   }
