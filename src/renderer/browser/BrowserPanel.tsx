@@ -16,6 +16,7 @@ import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 import { TranscriptPanel } from '../transcript/TranscriptPanel'
 import { SilencePanel } from '../silence/SilencePanel'
+import { RoughCutPanel } from '../agent/RoughCutPanel'
 import { Sidebar } from './Sidebar'
 import { AssetCell } from './AssetCell'
 
@@ -24,7 +25,7 @@ type ViewMode = 'grid' | 'list'
 
 export function BrowserPanel(): ReactNode {
   const { snapshot, selectedIds, setSelectedIds, openAsset, setGridAssetIds } = useLibrary()
-  const [tab, setTab] = useState<'clips' | 'transcript' | 'silence'>('clips')
+  const [tab, setTab] = useState<'clips' | 'transcript' | 'silence' | 'roughcut'>('clips')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<RatingFilter>('all')
   const [view, setView] = useState<ViewMode>('grid')
@@ -220,10 +221,19 @@ export function BrowserPanel(): ReactNode {
           >
             Silence
           </button>
+          <button
+            type="button"
+            className={tab === 'roughcut' ? 'active' : ''}
+            data-testid="browser-tab-roughcut"
+            onClick={() => setTab('roughcut')}
+          >
+            Rough Cut
+          </button>
         </span>
       </header>
       {tab === 'transcript' && <TranscriptPanel />}
       {tab === 'silence' && <SilencePanel onClose={() => setTab('clips')} />}
+      {tab === 'roughcut' && <RoughCutPanel onClose={() => setTab('clips')} />}
       {tab === 'clips' && (
         <>
           <div className="panel-toolbar">

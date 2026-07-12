@@ -89,7 +89,7 @@ export function TimelineCanvas(): ReactNode {
   }, [snapshot, openedAssetId])
 
   const buildRenderState = useCallback((): RenderState | null => {
-    const { sequence, selection, playheadFlicks, zoomPxPerSec, silenceRanges } =
+    const { sequence, selection, playheadFlicks, zoomPxPerSec, silenceRanges, roughCut } =
       useTimelineStore.getState()
     const canvas = canvasRef.current
     if (sequence === null || canvas === null) return null
@@ -98,6 +98,9 @@ export function TimelineCanvas(): ReactNode {
       selection,
       snapshot: snapshotRef.current,
       silenceRanges,
+      // badges only while the rough cut is still the sequence's top of history
+      roughCutCuts:
+        roughCut !== null && roughCut.resultSequence === sequence ? roughCut.cuts : null,
       playheadFlicks,
       zoomPxPerSec,
       scrollX: scrollXRef.current,

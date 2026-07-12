@@ -1345,6 +1345,32 @@ select,
   flex-shrink: 0;
 }
 
+.roughcut-reason {
+  margin-left: auto;
+  font-size: var(--font-size-small);
+  color: var(--color-text-dim);
+}
+
+.roughcut-reason-silence {
+  color: #ff453a;
+}
+
+.roughcut-reason-filler {
+  color: #ff9f0a;
+}
+
+/* per-cut provenance chip: this edit point was authored by the rough cut */
+.roughcut-ai-badge {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #0a84ff;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
 .sidebar-setting {
   display: flex;
   align-items: flex-start;

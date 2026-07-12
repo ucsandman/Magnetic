@@ -59,6 +59,7 @@ import {
   type Selection
 } from '../../shared/timeline/select'
 import { UndoStack, type Op } from '../../shared/timeline/undo'
+import { cutPointsFor, type RoughCutPoint, type RoughCutRange } from '../agent/roughcut'
 import { playbackEngine } from '../playback/engine'
 import { loadLoopPref, saveLoopPref } from '../playback/loop'
 import { measureDraws } from '../timeline/perf'
@@ -133,6 +134,25 @@ interface TimelineStore {
   /** Candidate dead-air ranges previewed on the timeline (SilencePanel owns this). */
   silenceRanges: { fromFlicks: number; toFlicks: number }[] | null
   setSilenceRanges(ranges: { fromFlicks: number; toFlicks: number }[] | null): void
+  /**
+   * Ephemeral rough-cut provenance (RoughCutPanel review + canvas AI badges).
+   * Valid only while `sequence` IS `resultSequence` — any later edit or undo
+   * replaces the sequence object and closes the review window. Never persisted.
+   */
+  roughCut: {
+    baseSequence: Sequence
+    resultSequence: Sequence
+    ranges: RoughCutRange[]
+    cuts: RoughCutPoint[]
+  } | null
+  /**
+   * Ripple-delete a rough-cut plan (ascending, non-overlapping — what
+   * planRoughCut returns) as ONE undo step, remembering provenance.
+   */
+  applyRoughCut(ranges: RoughCutRange[]): void
+  /** Restore one applied cut, keeping the rest (spell-checker style). */
+  rejectRoughCutCut(index: number): void
+  clearRoughCut(): void
   load(): Promise<void>
   applyOp(op: Op): OpResult | null
   bladeAt(clipId: string, timeFlicks: number): void
@@ -544,6 +564,59 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
       set({ silenceRanges })
     },
 
+    roughCut: null,
+
+    applyRoughCut(ranges) {
+      const { sequence } = get()
+      if (stack === null || sequence === null || ranges.length === 0) return
+      const baseSequence = sequence
+      stack.beginGroup()
+      for (const range of [...ranges].sort((a, b) => b.fromFlicks - a.fromFlicks)) {
+        stack.apply((seq) => rippleDeleteRange(seq, range))
+      }
+      stack.endGroup()
+      syncFromStack()
+      const resultSequence = stack.current
+      // Nothing actually deleted → no history entry to attribute or reject.
+      if (resultSequence === baseSequence) return
+      set({ roughCut: { baseSequence, resultSequence, ranges, cuts: cutPointsFor(ranges) } })
+    },
+
+    rejectRoughCutCut(index) {
+      const { sequence, roughCut } = get()
+      if (stack === null || roughCut === null) return
+      // Only while the rough cut is the top of history: any later edit (or an
+      // undo of the pass itself) replaced the sequence object, and popping the
+      // stack here would eat that edit instead of the rough cut.
+      if (sequence !== roughCut.resultSequence) return
+      if (index < 0 || index >= roughCut.ranges.length) return
+      stack.undo()
+      const remaining = roughCut.ranges.filter((_, i) => i !== index)
+      if (remaining.length === 0) {
+        set({ roughCut: null })
+        syncFromStack()
+        return
+      }
+      stack.beginGroup()
+      for (const range of [...remaining].sort((a, b) => b.fromFlicks - a.fromFlicks)) {
+        stack.apply((seq) => rippleDeleteRange(seq, range))
+      }
+      stack.endGroup()
+      syncFromStack()
+      set({
+        roughCut: {
+          baseSequence: roughCut.baseSequence,
+          resultSequence: stack.current,
+          ranges: remaining,
+          cuts: cutPointsFor(remaining)
+        }
+      })
+    },
+
+    clearRoughCut() {
+      set({ roughCut: null })
+    },
+
     setTimeRange(fromFlicks, toFlicks) {
       set((state) => ({
         selection:
@@ -687,7 +760,8 @@ export function installTimelineTestHooks(): void {
       skimming,
       tool,
       clipboard,
-      silenceRanges
+      silenceRanges,
+      roughCut
     } = useTimelineStore.getState()
     return {
       sequence,
@@ -698,7 +772,8 @@ export function installTimelineTestHooks(): void {
       skimming,
       tool,
       clipboard,
-      silenceRanges
+      silenceRanges,
+      roughCutCuts: roughCut?.cuts ?? null
     }
   }
   testWindow.__magneticTimeline = {

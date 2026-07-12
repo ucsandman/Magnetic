@@ -67,6 +67,8 @@ export interface RenderState {
   snapshot: LibrarySnapshot | null
   /** Candidate dead-air ranges previewed as translucent bands (SilencePanel). */
   silenceRanges: { fromFlicks: number; toFlicks: number }[] | null
+  /** Applied rough-cut edit points — AI provenance badges under the ruler. */
+  roughCutCuts: { flicks: number }[] | null
   playheadFlicks: number
   zoomPxPerSec: number
   scrollX: number
@@ -641,6 +643,25 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, state: RenderState):
   }
 
   drawRuler(ctx, state)
+
+  // AI provenance badges in the ruler: one per rough-cut edit point while the
+  // pass is the top of history (cleared the moment anything else edits) —
+  // after drawRuler so the ruler background doesn't paint over them
+  if (state.roughCutCuts !== null) {
+    ctx.font = '8px system-ui, sans-serif'
+    ctx.textBaseline = 'middle'
+    ctx.textAlign = 'center'
+    for (const cut of state.roughCutCuts) {
+      const x = timeToX(state, cut.flicks)
+      if (x < -8 || x > state.width + 8) continue
+      roundedRectPath(ctx, x - 7, RULER_H - 12, 14, 10, 3)
+      ctx.fillStyle = '#0a84ff'
+      ctx.fill()
+      ctx.fillStyle = '#fff'
+      ctx.fillText('AI', x, RULER_H - 7 + 1)
+    }
+    ctx.textAlign = 'left'
+  }
 
   // skimmer
   if (state.skimmerX !== null) {

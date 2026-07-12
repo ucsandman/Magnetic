@@ -180,6 +180,16 @@ The **Silence** tab (next to Transcript, top of the browser) finds every dead-ai
 
 Detection is a loudness heuristic (50 ms RMS windows), so near fades you may want a lower threshold. Authored gaps you placed yourself are never detected — only quiet audio is.
 
+### Rough Cut — the one-button first pass
+
+The **Rough Cut** tab merges dead-air and filler-word detection into a single plan and applies it in one click — the first pass of a talking-head edit, done for you, with every cut reviewable:
+
+1. Open the **Rough Cut** tab. One **Aggressiveness** slider replaces the three silence knobs (higher = shorter pauses count as dead air), and **Remove fillers** adds the transcript's um/uh/you-know ranges to the plan. Candidates preview live as red bands; each row says whether it's dead air or a filler, click a row to jump there, untick to keep it.
+2. Click **Rough Cut** — everything is ripple-deleted as ONE undo step, and the panel switches to review mode.
+3. Review spell-checker style: every cut gets a blue **AI** badge on the timeline ruler and a row in the list. Click a row to inspect that edit point; click **Reject** to restore just that cut — the others stay. One `Ctrl+Z` still reverts the whole pass.
+
+The review window stays open until you edit something else or click **Done**; the AI badges are session-only provenance, never saved into the project. Filler detection needs a transcript, so on freshly imported clips give transcription a moment to finish first.
+
 ### Burned-in captions — live from the transcript
 
 Captions are never clips: they derive **live** from the transcript of your current cut, so every blade, trim, ripple, or transcript edit updates them instantly — there is nothing to re-sync, ever.

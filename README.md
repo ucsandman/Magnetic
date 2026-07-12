@@ -50,6 +50,7 @@ Magnetic timeline · WebCodecs/WebGL2 playback · edit-by-transcript · auto sil
 - **Loop to fill** — loop a connected music bed to the end of the spine in one action; seam ticks on the timeline, whole-bed fade envelope, one undo step
 - **Edit-by-transcript** — local whisper.cpp transcription, word-click seek, select-text-and-delete-to-cut, filler-word removal, transcript search
 - **Auto silence removal** — background audio analysis, tunable dead-air detection with timeline preview, one-click jump-cuts, one-step undo
+- **Rough Cut** — one button merges silence + filler detection into a single pass (one aggressiveness slider), applies it as one undo step, then review each AI-badged cut on the ruler and reject individual cuts spell-checker style; the first slice of the human+agent co-editing roadmap (`docs/agent-copilot-vision.md`)
 - **Captions** — burned-in captions derived live from the transcript (pop-in / karaoke / block presets); SRT/VTT sidecar export
 
 ### Finish & export
