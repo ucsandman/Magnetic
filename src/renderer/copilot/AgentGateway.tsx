@@ -7,6 +7,8 @@ import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 import { ensureTranscripts } from '../transcript/cache'
 import { DUCK_AMOUNT_DB, planDucking } from '../silence/ducking'
+import { findQuote } from '../transcript/quote'
+import { projectTranscript } from '../transcript/projection'
 import { buildCopilotContext } from './context'
 import { ensureEnvelopes } from './envelopes'
 import { scoreFlow } from './flow-score'
@@ -137,6 +139,57 @@ async function handleAgentTool(
         }
       }
       return presentProposal(base, scratch, executed, results, lastOutcome)
+    }
+    case 'cut_words': {
+      const record = input as { quote?: unknown; occurrence?: unknown } | null
+      const quote = typeof record?.quote === 'string' ? record.quote.trim() : ''
+      if (quote.length === 0) return { error: 'cut_words needs { quote: "the words to cut" }' }
+      const occurrence =
+        typeof record?.occurrence === 'number' && Number.isInteger(record.occurrence)
+          ? record.occurrence
+          : null
+      await waitForGestureEnd()
+      const current = useTimelineStore.getState()
+      const base = current.sequence
+      if (base === null) return { error: 'no project is open in the editor' }
+      if (current.pendingProposal !== null) {
+        return { error: 'a proposal is already awaiting human review — poll get_status' }
+      }
+      const transcripts = await ensureTranscripts(base, snapshot)
+      const words = projectTranscript(base, transcripts)
+      if (words.length === 0) {
+        return { error: 'no transcript available yet — transcription runs after import' }
+      }
+      const matches = findQuote(words, quote)
+      if (matches.length === 0) {
+        return { error: `"${quote}" does not occur in the transcript — read_timeline to see it` }
+      }
+      if (matches.length > 1 && occurrence === null) {
+        return {
+          error: `"${quote}" occurs ${matches.length} times — pass occurrence (0-based) to pick one`,
+          occurrences: matches.map((match, index) => ({
+            occurrence: index,
+            at_sec: Math.round((match.fromFlicks / FLICKS_PER_SECOND) * 10) / 10
+          }))
+        }
+      }
+      const match = matches[Math.min(occurrence ?? 0, matches.length - 1)]
+      const deleteInput = {
+        from_sec: match.fromFlicks / FLICKS_PER_SECOND,
+        to_sec: match.toFlicks / FLICKS_PER_SECOND
+      }
+      const outcome = executeEditTool(base, 'ripple_delete_range', deleteInput)
+      const executed =
+        outcome.summary === null
+          ? []
+          : [
+              {
+                name: 'ripple_delete_range',
+                input: deleteInput,
+                summary: `Cut "${quote}" — ${outcome.summary}`
+              }
+            ]
+      return presentProposal(base, outcome.next, executed, [outcome.resultText], lastOutcome)
     }
     case 'duck_music': {
       const record = input as { amount_db?: unknown } | null

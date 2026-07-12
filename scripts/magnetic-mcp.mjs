@@ -104,6 +104,19 @@ const TOOLS = [
     }
   },
   {
+    name: 'cut_words',
+    description:
+      'Text-based editing: cut the timeline range where the given words are spoken (case/punctuation-insensitive match against the transcript). If the quote occurs more than once, the occurrences come back with timestamps — pass occurrence (0-based) to pick one. Presented as a ghost-diff proposal — poll get_status for the verdict.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        quote: { type: 'string', description: 'The spoken words to remove, e.g. "um so anyway"' },
+        occurrence: { type: 'number', description: '0-based pick when the quote repeats' }
+      },
+      required: ['quote']
+    }
+  },
+  {
     name: 'duck_music',
     description:
       'Auto-duck: find where dialogue is speaking and propose gain dips on every music-role bed under it (default −12 dB). Presented as a ghost-diff proposal — poll get_status for the verdict.',

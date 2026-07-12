@@ -118,6 +118,16 @@ export function TranscriptPanel(): ReactNode {
         />
         <button
           type="button"
+          data-testid="transcript-cut-selection"
+          disabled={selectionRange === null}
+          title="Ripple-delete the selected words' time range (Delete)"
+          onClick={deleteSelection}
+        >
+          Cut selection
+          {selectionRange !== null ? ` (${selectionRange.hi - selectionRange.lo + 1})` : ''}
+        </button>
+        <button
+          type="button"
           data-testid="transcript-remove-fillers"
           disabled={fillers.length === 0}
           title="Ripple-delete every detected filler word (one undo step)"
