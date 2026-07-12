@@ -225,11 +225,24 @@ export interface MagneticApi {
   captionsPickDestination(format: 'srt' | 'vtt'): Promise<string | null>
   /** Write a serialized SRT/VTT sidecar to the given path. */
   captionsWriteSidecar(destination: string, content: string): Promise<void>
-  getSettings(): Promise<{ autoTranscribe: boolean; anthropicApiKey: string | null }>
+  getSettings(): Promise<{
+    autoTranscribe: boolean
+    anthropicApiKey: string | null
+    agentAccess: boolean
+    agentToken: string | null
+  }>
   setSettings(settings: {
     autoTranscribe?: boolean
     anthropicApiKey?: string | null
+    agentAccess?: boolean
+    agentToken?: string
   }): Promise<void>
+  /** Is the agent sidecar running, on which loopback port, with which token. */
+  agentStatus(): Promise<{ running: boolean; port: number | null; token: string | null }>
+  /** External agent tool calls pushed from the sidecar for the gateway to run. */
+  onAgentRequest(cb: (request: { id: string; tool: string; input: unknown }) => void): () => void
+  /** The gateway's answer for a pushed agent request. */
+  agentRespond(id: string, result: unknown): Promise<void>
   /** Relink a missing asset via the OS file picker (duration must match). */
   relinkAsset(assetId: string): Promise<void>
   onLibraryChanged(cb: (snapshot: import('./types').LibrarySnapshot) => void): () => void

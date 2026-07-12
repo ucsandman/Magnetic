@@ -214,6 +214,16 @@ The **Copilot** tab is an editing partner: it sees the open sequence (clips and 
 
 Under the hood the copilot uses the same edit operations as your keyboard — blade, ripple delete, trim, roll, slip, move, transitions — each validated against the timeline's invariants before it can even be proposed. There is no export tool: only you can ship. If transcription hasn't finished, it will say so rather than guess.
 
+### Agent Access — let outside agents co-edit (MCP)
+
+Magnetic can act as an MCP server: Claude Code, Claude Desktop, or any MCP client can see your open project and propose edits — under exactly the same rules as the built-in Copilot. **External agents can never edit directly**: every batch arrives as a ghost-diff preview with a purple banner on the timeline ("⚡ External agent proposes N changes"), and nothing applies until you click Accept. There is no export tool over MCP at all.
+
+1. Tick **Agent Access** in the browser sidebar. Magnetic starts a loopback-only connection (127.0.0.1, never the network) protected by a token — reveal or rotate it right there. Unticking severs every connection instantly.
+2. Connect Claude Code from your project folder: `claude mcp add magnetic -- node scripts/magnetic-mcp.mjs` — the bridge finds the running editor automatically.
+3. The agent gets four tools: `read_timeline` (your cut as text), `check_flow` (the same self-check score), `get_status` (including whether you accepted or discarded its last proposal), and `propose_edits` (the full edit grammar, times in seconds).
+
+Everything you know from the Copilot applies: ghost hatch + green preview strip, one undo step per accepted batch, per-change checkboxes in the Copilot tab, attribution dots, and the flow score.
+
 ### Burned-in captions — live from the transcript
 
 Captions are never clips: they derive **live** from the transcript of your current cut, so every blade, trim, ripple, or transcript edit updates them instantly — there is nothing to re-sync, ever.

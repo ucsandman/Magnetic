@@ -76,8 +76,20 @@ export interface IpcDeps {
   ensureProxy(assetId: string): Promise<string>
   transcribe(assetId: string): void
   denoise(assetId: string): void
-  getSettings(): { autoTranscribe: boolean; anthropicApiKey: string | null }
-  setSettings(settings: { autoTranscribe?: boolean; anthropicApiKey?: string | null }): void
+  getSettings(): {
+    autoTranscribe: boolean
+    anthropicApiKey: string | null
+    agentAccess: boolean
+    agentToken: string | null
+  }
+  setSettings(settings: {
+    autoTranscribe?: boolean
+    anthropicApiKey?: string | null
+    agentAccess?: boolean
+    agentToken?: string
+  }): void
+  agentStatus(): { running: boolean; port: number | null; token: string | null }
+  agentRespond(id: string, result: unknown): void
   relink(assetId: string): Promise<void>
   relinkPath(assetId: string, path: string): Promise<void>
 }
@@ -130,11 +142,23 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
     z
       .strictObject({
         autoTranscribe: z.boolean().optional(),
-        anthropicApiKey: z.string().nullable().optional()
+        anthropicApiKey: z.string().nullable().optional(),
+        agentAccess: z.boolean().optional(),
+        agentToken: z.string().min(8).optional()
       })
       .refine((payload) => Object.keys(payload).length > 0, 'empty settings payload'),
     async (payload) => {
       deps.setSettings(payload)
+    }
+  )
+
+  handleValidated(IPC.agentStatus, z.undefined(), async () => deps.agentStatus())
+
+  handleValidated(
+    IPC.agentRespond,
+    z.object({ id: z.uuid(), result: z.unknown() }),
+    async (payload) => {
+      deps.agentRespond(payload.id, payload.result)
     }
   )
 

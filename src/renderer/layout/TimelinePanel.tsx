@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { flicksToTimecode } from '../../shared/timecode'
 import { spineEditPoints } from '../../shared/timeline/model'
+import { AgentProposalBanner } from '../copilot/AgentProposalBanner'
 import { playbackEngine } from '../playback/engine'
 import { goToSequenceEnd, seekSequence, toggleSequencePlayback } from '../playback/transport'
 import { isEditableTarget, registerShortcut } from '../shortcuts'
@@ -308,6 +309,7 @@ export function TimelinePanel(): ReactNode {
   return (
     <section className="panel panel-timeline" data-testid="panel-timeline">
       <header className="panel-header">Timeline</header>
+      <AgentProposalBanner />
       <div className="panel-toolbar timeline-toolbar">
         <span className="timeline-tc" data-testid="timeline-playhead-tc">
           {flicksToTimecode(playheadFlicks, fps)}

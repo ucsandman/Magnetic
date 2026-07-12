@@ -33,6 +33,12 @@ export const IPC = {
   captionsWriteSidecar: 'captions:writeSidecar',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
+  /** main -> renderer push: one external agent tool call to execute. */
+  agentRequest: 'agent:request',
+  /** renderer -> main: the gateway's answer for a pushed agent request. */
+  agentRespond: 'agent:respond',
+  /** renderer -> main: is the agent sidecar running, on which port, which token. */
+  agentStatus: 'agent:status',
   /** main -> renderer push: full library snapshot after any change */
   libraryChanged: 'library:changed',
   /** main -> renderer push: Edit menu command ('undo' | 'redo') */

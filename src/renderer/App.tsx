@@ -4,6 +4,7 @@ import { ViewerPanel } from './viewer/ViewerPanel'
 import { TimelinePanel } from './layout/TimelinePanel'
 import { InspectorPanel } from './layout/InspectorPanel'
 import { DebugPanel } from './layout/DebugPanel'
+import { AgentGateway } from './copilot/AgentGateway'
 import { ExportDialog } from './export/ExportDialog'
 import { ShortcutOverlay } from './layout/ShortcutOverlay'
 import {
@@ -139,6 +140,7 @@ export default function App(): ReactNode {
             Inspector
           </button>
         </div>
+        <AgentGateway />
         <BrowserPanel />
         <ViewerPanel />
         <InspectorPanel />

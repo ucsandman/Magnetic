@@ -37,6 +37,16 @@ const api: MagneticApi = {
     ipcRenderer.invoke(IPC.captionsWriteSidecar, { destination, content }),
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   setSettings: (settings) => ipcRenderer.invoke(IPC.settingsSet, settings),
+  agentStatus: () => ipcRenderer.invoke(IPC.agentStatus),
+  onAgentRequest: (cb) => {
+    const listener = (
+      _event: unknown,
+      request: { id: string; tool: string; input: unknown }
+    ): void => cb(request)
+    ipcRenderer.on(IPC.agentRequest, listener)
+    return () => ipcRenderer.removeListener(IPC.agentRequest, listener)
+  },
+  agentRespond: (id, result) => ipcRenderer.invoke(IPC.agentRespond, { id, result }),
   relinkAsset: (assetId) => ipcRenderer.invoke(IPC.relinkAsset, { assetId }),
   onLibraryChanged: (cb) => {
     const listener = (_event: unknown, snapshot: LibrarySnapshot): void => cb(snapshot)

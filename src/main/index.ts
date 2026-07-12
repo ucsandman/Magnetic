@@ -22,9 +22,20 @@ import {
   relinkAsset,
   relinkViaDialog
 } from './app-state'
+import { randomUUID } from 'crypto'
 import {
+  agentSidecarStatus,
+  resolveAgentRequest,
+  startAgentSidecar,
+  stopAgentSidecar
+} from './agent-sidecar'
+import {
+  getAgentAccess,
+  getAgentToken,
   getAnthropicApiKey,
   getAutoTranscribe,
+  setAgentAccess,
+  setAgentToken,
   setAnthropicApiKey,
   setAutoTranscribe
 } from './project-io/library'
@@ -95,12 +106,33 @@ app.whenReady().then(async () => {
     denoise: (assetId) => enqueueDenoise(assetId),
     getSettings: () => ({
       autoTranscribe: getAutoTranscribe(),
-      anthropicApiKey: getAnthropicApiKey()
+      anthropicApiKey: getAnthropicApiKey(),
+      agentAccess: getAgentAccess(),
+      agentToken: getAgentToken()
     }),
     setSettings: (settings) => {
       if (settings.autoTranscribe !== undefined) setAutoTranscribe(settings.autoTranscribe)
       if (settings.anthropicApiKey !== undefined) setAnthropicApiKey(settings.anthropicApiKey)
+      if (settings.agentToken !== undefined) setAgentToken(settings.agentToken)
+      if (settings.agentAccess !== undefined) {
+        setAgentAccess(settings.agentAccess)
+        if (settings.agentAccess) {
+          let sidecarToken = getAgentToken()
+          if (sidecarToken === null) {
+            sidecarToken = randomUUID()
+            setAgentToken(sidecarToken)
+          }
+          void startAgentSidecar(sidecarToken)
+        } else {
+          void stopAgentSidecar()
+        }
+      } else if (settings.agentToken !== undefined && agentSidecarStatus().running) {
+        // token rotated while running: bounce the sidecar onto the new token
+        void stopAgentSidecar().then(() => startAgentSidecar(settings.agentToken as string))
+      }
     },
+    agentStatus: () => agentSidecarStatus(),
+    agentRespond: (id, result) => resolveAgentRequest(id, result),
     relink: (assetId) => relinkViaDialog(assetId),
     relinkPath: (assetId, path) => relinkAsset(assetId, path)
   })
@@ -112,6 +144,16 @@ app.whenReady().then(async () => {
   registerSmartExportIpc()
   registerCaptionsIpc()
   createWindow()
+
+  // Agent Access: opt-in via the Sidebar toggle (persisted) or MAGNETIC_AGENT=1
+  if (process.env.MAGNETIC_AGENT === '1' || getAgentAccess()) {
+    let sidecarToken = process.env.MAGNETIC_AGENT_TOKEN ?? getAgentToken()
+    if (sidecarToken === null || sidecarToken === '') {
+      sidecarToken = randomUUID()
+      setAgentToken(sidecarToken)
+    }
+    void startAgentSidecar(sidecarToken)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

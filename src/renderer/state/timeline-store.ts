@@ -169,7 +169,7 @@ interface TimelineStore {
     changes: string[]
     /** Replayable op log (copilot batches) — enables partial accept. */
     ops: { name: string; input: unknown; summary: string }[] | null
-    label: 'Rough Cut' | 'Copilot'
+    label: 'Rough Cut' | 'Copilot' | 'Agent'
   } | null
   /**
    * Build + validate a rough-cut proposal against the current sequence.
@@ -184,7 +184,8 @@ interface TimelineStore {
    */
   proposeCopilotChanges(
     proposedSequence: Sequence,
-    ops: { name: string; input: unknown; summary: string }[]
+    ops: { name: string; input: unknown; summary: string }[],
+    label?: 'Copilot' | 'Agent'
   ): boolean
   /** Commit the pending proposal through the undo stack as ONE group. */
   acceptProposal(): void
@@ -670,7 +671,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
       return true
     },
 
-    proposeCopilotChanges(proposedSequence, ops) {
+    proposeCopilotChanges(proposedSequence, ops, label = 'Copilot') {
       const { sequence } = get()
       if (sequence === null || proposedSequence === sequence) return false
       const violations = validateSequence(proposedSequence)
@@ -687,7 +688,7 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
           ranges: null,
           changes: ops.map((op) => op.summary),
           ops,
-          label: 'Copilot'
+          label
         }
       })
       return true
@@ -723,13 +724,16 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
         scratch = outcome.next
       }
       if (validateSequence(scratch).length > 0) return false
-      set({ pendingProposal: null })
-      if (scratch === sequence) return true
+      if (scratch === sequence) {
+        set({ pendingProposal: null })
+        return true
+      }
       stack.apply((seq) => ({
         next: scratch,
         inverse: { type: 'restore', sequence: seq }
       }))
       syncFromStack()
+      set({ pendingProposal: null })
       recordAttribution(sequence, scratch, 'Copilot')
       return true
     },
@@ -737,22 +741,28 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
     acceptProposal() {
       const { sequence, pendingProposal } = get()
       if (pendingProposal === null) return
-      set({ pendingProposal: null })
       // The scratch was computed against this exact sequence; if the human
       // kept editing underneath it, the proposal is stale and silently drops.
-      if (sequence !== pendingProposal.baseSequence) return
+      if (sequence !== pendingProposal.baseSequence) {
+        set({ pendingProposal: null })
+        return
+      }
       if (pendingProposal.ranges !== null) {
+        set({ pendingProposal: null })
         get().applyRoughCut(pendingProposal.ranges)
         return
       }
       // Op batches commit as ONE snapshot entry through the same stack the
       // human's keystrokes use: {before: base, after: proposed} — one Ctrl+Z.
       if (stack === null) return
+      // Apply BEFORE clearing so outcome watchers (agent gateway) see the
+      // sequence move off the base while the proposal is still identifiable.
       stack.apply((seq) => ({
         next: pendingProposal.proposedSequence,
         inverse: { type: 'restore', sequence: seq }
       }))
       syncFromStack()
+      set({ pendingProposal: null })
       recordAttribution(pendingProposal.baseSequence, pendingProposal.proposedSequence, 'Copilot')
     },
 

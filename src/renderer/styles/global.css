@@ -1492,6 +1492,22 @@ select,
   color: var(--color-text-dim);
 }
 
+.agent-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: #bf5af222;
+  border-bottom: 1px solid #bf5af266;
+  font-size: var(--font-size-small);
+  flex-shrink: 0;
+}
+
+.agent-banner span {
+  flex: 1;
+  min-width: 0;
+}
+
 .flow-chip {
   flex-shrink: 0;
   margin: 0 8px 8px;
@@ -1557,6 +1573,21 @@ select,
 
 .sidebar-setting input[type='checkbox'] {
   margin-top: 1px; /* optically center against the first text line */
+}
+
+.sidebar-agent-token {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+.sidebar-agent-token button {
+  font-size: var(--font-size-small);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-setting-note {

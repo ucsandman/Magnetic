@@ -18,6 +18,10 @@ interface SettingsJson {
   autoTranscribe?: boolean
   /** Anthropic API key for the Copilot advisor. Stored here (userData), never in the renderer's localStorage, never logged. */
   anthropicApiKey?: string
+  /** Agent Access: external agents may connect through the MCP sidecar. Off by default. */
+  agentAccess?: boolean
+  /** Bearer token for the agent sidecar; generated on first enable, rotatable. */
+  agentToken?: string
 }
 
 export function getAutoTranscribe(): boolean {
@@ -37,6 +41,22 @@ export function setAnthropicApiKey(key: string | null): void {
   if (key === null || key === '') delete settings.anthropicApiKey
   else settings.anthropicApiKey = key
   writeSettings(settings)
+}
+
+export function getAgentAccess(): boolean {
+  return readSettings().agentAccess ?? false
+}
+
+export function setAgentAccess(enabled: boolean): void {
+  writeSettings({ ...readSettings(), agentAccess: enabled })
+}
+
+export function getAgentToken(): string | null {
+  return readSettings().agentToken ?? null
+}
+
+export function setAgentToken(agentToken: string): void {
+  writeSettings({ ...readSettings(), agentToken })
 }
 
 const AUTOSAVE_DELAY_MS = 500
