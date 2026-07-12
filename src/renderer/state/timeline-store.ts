@@ -63,6 +63,7 @@ import {
   type Selection
 } from '../../shared/timeline/select'
 import { touchedClipIds } from '../../shared/timeline/diff'
+import { DEFAULT_TARGET_LUFS, normalizeGainDb } from '../../shared/loudness'
 import { UndoStack, type Op } from '../../shared/timeline/undo'
 import { validateSequence } from '../../shared/timeline/validate'
 import {
@@ -125,6 +126,11 @@ interface TimelineStore {
   setRole(clipId: string, role: ClipRole): void
   /** Drop a blue marker on the spine clip under the playhead (M). */
   addMarkerAtPlayhead(): void
+  /**
+   * Measure each clip's source loudness and set its volume so it plays at the
+   * target LUFS (one undo group). Returns how many clips were adjusted.
+   */
+  normalizeLoudness(clipIds: string[], targetLufs?: number): Promise<number>
   /** Replace the set of muted roles (mute/solo buttons; undoable). */
   setRoleMutes(roles: ClipRole[]): void
   setTitle(clipId: string, titleData: TitleData): void
@@ -455,6 +461,50 @@ export const useTimelineStore = create<TimelineStore>((set, get) => {
           color: 'blue'
         })
       )
+    },
+
+    async normalizeLoudness(clipIds, targetLufs = DEFAULT_TARGET_LUFS) {
+      const { sequence } = get()
+      if (stack === null || sequence === null) return 0
+      const targets: { clipId: string; assetId: string; fx: ClipFx | undefined }[] = []
+      for (const clipId of clipIds) {
+        const spine = sequence.spine.find((item) => item.id === clipId && item.kind === 'clip')
+        if (spine !== undefined && spine.kind === 'clip') {
+          targets.push({ clipId, assetId: spine.assetId, fx: spine.fx })
+          continue
+        }
+        const cc = sequence.connected.find(
+          (candidate) => candidate.id === clipId && candidate.titleData === undefined
+        )
+        if (cc !== undefined) targets.push({ clipId, assetId: cc.assetId, fx: cc.fx })
+      }
+      const lufsByAsset = new Map<string, number | null>()
+      await Promise.all(
+        [...new Set(targets.map((target) => target.assetId))].map(async (assetId) => {
+          try {
+            lufsByAsset.set(assetId, await window.api.audioLoudness(assetId))
+          } catch {
+            lufsByAsset.set(assetId, null)
+          }
+        })
+      )
+      const adjustable = targets.filter(
+        (target) => (lufsByAsset.get(target.assetId) ?? null) !== null
+      )
+      if (adjustable.length === 0) return 0
+      stack.beginGroup()
+      for (const target of adjustable) {
+        const gain = normalizeGainDb(lufsByAsset.get(target.assetId)!, targetLufs)
+        stack.apply((seq) =>
+          setClipFx(seq, {
+            clipId: target.clipId,
+            fx: { ...DEFAULT_FX, ...(target.fx ?? {}), volumeDb: gain }
+          })
+        )
+      }
+      stack.endGroup()
+      syncFromStack()
+      return adjustable.length
     },
 
     setRoleMutes(roles) {

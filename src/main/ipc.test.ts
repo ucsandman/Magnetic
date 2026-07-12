@@ -24,6 +24,7 @@ const deps: IpcDeps = {
   ensureProxy: async () => 'mfile:///proxy.mp4',
   transcribe: () => {},
   denoise: () => {},
+  loudness: async () => -23,
   getSettings: () => ({
     autoTranscribe: true,
     anthropicApiKey: null,

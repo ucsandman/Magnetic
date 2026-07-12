@@ -235,6 +235,8 @@ export interface MagneticApi {
   transcribeAsset(assetId: string): Promise<void>
   /** Queue voice cleanup (denoise); playback prefers the result when done. */
   denoiseAsset(assetId: string): Promise<void>
+  /** Measure (cached) integrated loudness in LUFS; null when unmeasurable. */
+  audioLoudness(assetId: string): Promise<number | null>
   /** Native save dialog for a caption sidecar; null when cancelled. */
   captionsPickDestination(format: 'srt' | 'vtt'): Promise<string | null>
   /** Write a serialized SRT/VTT sidecar to the given path. */

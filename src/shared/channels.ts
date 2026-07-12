@@ -16,6 +16,7 @@ export const IPC = {
   mediaEnsurePcm: 'media:ensurePcm',
   mediaEnsureProxy: 'media:ensureProxy',
   mediaDenoise: 'media:denoise',
+  mediaLoudness: 'media:loudness',
   diagMemory: 'diag:memory',
   exportPickDestination: 'export:pickDestination',
   exportStart: 'export:start',

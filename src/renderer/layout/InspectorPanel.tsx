@@ -342,6 +342,16 @@ export function InspectorPanel(): ReactNode {
                 }}
               />
             </label>
+            {titleData === undefined && (
+              <button
+                type="button"
+                data-testid="normalize-loudness"
+                title="Measure this clip's source loudness and set Volume dB so it plays at the streaming standard (−14 LUFS)"
+                onClick={() => void useTimelineStore.getState().normalizeLoudness([selectedId])}
+              >
+                Normalize to −14 LUFS
+              </button>
+            )}
           </>
         )}
         {activeTab === 'title' && titleData !== undefined && (

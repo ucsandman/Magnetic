@@ -11,6 +11,7 @@ import { generateWaveform } from './jobs/waveform'
 import { generateAudioEnvelope } from './jobs/audio-envelope'
 import { ensurePcm, ensureProxy } from './jobs/media-derivatives'
 import { generateDenoised } from './jobs/denoise'
+import { measureLoudness } from './jobs/loudness'
 import { generateTranscript } from './jobs/transcribe'
 import { ffmpegPath, whisperModelPath, whisperPath } from './binaries'
 import { startMediaServer, type MediaServer } from './media-server'
@@ -170,6 +171,14 @@ export function enqueueDenoise(assetId: string): void {
       }
     }
   })
+}
+
+/** Measure (cached) integrated loudness in LUFS; null when unmeasurable. */
+export async function assetLoudness(assetId: string): Promise<number | null> {
+  const lib = getStore()
+  const asset = lib.assets[assetId]
+  if (asset === undefined) throw new Error(`unknown asset: ${assetId}`)
+  return measureLoudness(lib.root, asset)
 }
 
 /** Extract PCM once and return its mfile URL (null when the asset has no audio). */

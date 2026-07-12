@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { DEFAULT_TARGET_LUFS, normalizeGainDb } from '../../shared/loudness'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
-import type { Sequence } from '../../shared/timeline/model'
+import { effectiveRole, type Sequence } from '../../shared/timeline/model'
 import type { LibrarySnapshot } from '../../shared/types'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
@@ -40,6 +41,30 @@ async function waitForGestureEnd(): Promise<void> {
     })
   } finally {
     useTimelineStore.getState().bumpAgentQueued(-1)
+  }
+}
+
+/** Present an executed scratch batch as the pending 'Agent' proposal. */
+function presentProposal(
+  base: Sequence,
+  scratch: Sequence,
+  executed: { name: string; input: unknown; summary: string }[],
+  results: string[],
+  lastOutcome: { current: Outcome }
+): unknown {
+  if (scratch === base || executed.length === 0) {
+    return { error: 'the ops changed nothing', results }
+  }
+  lastOutcome.current = null
+  if (!useTimelineStore.getState().proposeCopilotChanges(scratch, executed, 'Agent')) {
+    return { error: 'the proposal failed the timeline invariant gate', results }
+  }
+  return {
+    ok: true,
+    presented: true,
+    changes: executed.map((op) => op.summary),
+    results,
+    note: 'the human sees a ghost-diff preview now — poll get_status for their verdict; nothing is applied until they Accept'
   }
 }
 
@@ -110,20 +135,76 @@ async function handleAgentTool(
           executed.push({ name: op.name, input: op.input, summary: outcome.summary })
         }
       }
-      if (scratch === base || executed.length === 0) {
-        return { error: 'the ops changed nothing', results }
+      return presentProposal(base, scratch, executed, results, lastOutcome)
+    }
+    case 'normalize_loudness': {
+      const record = input as { target_lufs?: unknown; clip_ids?: unknown } | null
+      const target =
+        typeof record?.target_lufs === 'number' && Number.isFinite(record.target_lufs)
+          ? record.target_lufs
+          : DEFAULT_TARGET_LUFS
+      const requested = Array.isArray(record?.clip_ids)
+        ? (record.clip_ids as unknown[]).filter((id): id is string => typeof id === 'string')
+        : null
+      await waitForGestureEnd()
+      const current = useTimelineStore.getState()
+      const base = current.sequence
+      if (base === null) return { error: 'no project is open in the editor' }
+      if (current.pendingProposal !== null) {
+        return { error: 'a proposal is already awaiting human review — poll get_status' }
       }
-      lastOutcome.current = null
-      if (!useTimelineStore.getState().proposeCopilotChanges(scratch, executed, 'Agent')) {
-        return { error: 'the proposal failed the timeline invariant gate', results }
+      // targets: the requested ids, else every audible dialogue-role clip
+      const wanted = (id: string, role: ReturnType<typeof effectiveRole>): boolean =>
+        requested !== null ? requested.includes(id) : role === 'dialogue'
+      const targets: { clipId: string; assetId: string }[] = []
+      for (const item of base.spine) {
+        if (item.kind !== 'clip' || item.audioDisabled === true) continue
+        if (wanted(item.id, effectiveRole(item))) {
+          targets.push({ clipId: item.id, assetId: item.assetId })
+        }
       }
-      return {
-        ok: true,
-        presented: true,
-        changes: executed.map((op) => op.summary),
-        results,
-        note: 'the human sees a ghost-diff preview now — poll get_status for their verdict; nothing is applied until they Accept'
+      for (const cc of base.connected) {
+        if (cc.titleData !== undefined || cc.audioDisabled === true) continue
+        if (wanted(cc.id, effectiveRole(cc))) {
+          targets.push({ clipId: cc.id, assetId: cc.assetId })
+        }
       }
+      if (targets.length === 0) return { error: 'no matching clips with audio' }
+      const lufsByAsset = new Map<string, number | null>()
+      await Promise.all(
+        [...new Set(targets.map((entry) => entry.assetId))].map(async (assetId) => {
+          try {
+            lufsByAsset.set(assetId, await window.api.audioLoudness(assetId))
+          } catch {
+            lufsByAsset.set(assetId, null)
+          }
+        })
+      )
+      let scratch = base
+      const executed: { name: string; input: unknown; summary: string }[] = []
+      const results: string[] = []
+      for (const entry of targets) {
+        const lufs = lufsByAsset.get(entry.assetId) ?? null
+        if (lufs === null) {
+          results.push(`${entry.clipId}: loudness unmeasurable, skipped`)
+          continue
+        }
+        const volumeInput = {
+          clip_id: entry.clipId,
+          volume_db: Math.round(normalizeGainDb(lufs, target) * 10) / 10
+        }
+        const outcome = executeEditTool(scratch, 'set_volume', volumeInput)
+        scratch = outcome.next
+        results.push(`${entry.clipId}: measured ${lufs.toFixed(1)} LUFS — ${outcome.resultText}`)
+        if (outcome.summary !== null) {
+          executed.push({
+            name: 'set_volume',
+            input: volumeInput,
+            summary: `${outcome.summary} (measured ${lufs.toFixed(1)} LUFS, target ${target})`
+          })
+        }
+      }
+      return presentProposal(base, scratch, executed, results, lastOutcome)
     }
     default:
       return { error: `unknown tool "${tool}"` }

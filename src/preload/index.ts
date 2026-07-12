@@ -32,6 +32,7 @@ const api: MagneticApi = {
   },
   transcribeAsset: (assetId) => ipcRenderer.invoke(IPC.transcribeRun, { assetId }),
   denoiseAsset: (assetId) => ipcRenderer.invoke(IPC.mediaDenoise, { assetId }),
+  audioLoudness: (assetId) => ipcRenderer.invoke(IPC.mediaLoudness, { assetId }),
   captionsPickDestination: (format) => ipcRenderer.invoke(IPC.captionsPickDestination, { format }),
   captionsWriteSidecar: (destination, content) =>
     ipcRenderer.invoke(IPC.captionsWriteSidecar, { destination, content }),

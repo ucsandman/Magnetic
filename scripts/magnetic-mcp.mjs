@@ -87,7 +87,7 @@ const TOOLS = [
   {
     name: 'propose_edits',
     description:
-      'Propose a batch of edits. Ops (times in SECONDS, clip ids from read_timeline): ripple_delete_range {from_sec,to_sec}; ripple_delete_clips {clip_ids}; blade {clip_id,at_sec}; trim_clip {clip_id,edge:head|tail,delta_sec}; move_clip {clip_id,to_index}; roll_edit {edit_point_index,delta_sec}; slip_clip {clip_id,delta_sec}; add_transition {edit_point_index,duration_sec,kind:dissolve|wipeL|wipeR|fadeBlack}. NOTHING is applied: the human sees a ghost-diff preview and decides. Poll get_status for their verdict.',
+      'Propose a batch of edits. Ops (times in SECONDS, clip ids from read_timeline): ripple_delete_range {from_sec,to_sec}; ripple_delete_clips {clip_ids}; blade {clip_id,at_sec}; trim_clip {clip_id,edge:head|tail,delta_sec}; move_clip {clip_id,to_index}; roll_edit {edit_point_index,delta_sec}; slip_clip {clip_id,delta_sec}; add_transition {edit_point_index,duration_sec,kind:dissolve|wipeL|wipeR|fadeBlack}; set_role {clip_id,role:dialogue|music|sfx}; set_volume {clip_id,volume_db}; add_marker {at_sec,text,color?:blue|green|orange|red}; remove_marker {marker_id}. NOTHING is applied: the human sees a ghost-diff preview and decides. Poll get_status for their verdict.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -101,6 +101,18 @@ const TOOLS = [
         }
       },
       required: ['ops']
+    }
+  },
+  {
+    name: 'normalize_loudness',
+    description:
+      'Measure each target clip’s source loudness (EBU R128) and propose per-clip volume changes that bring them to the target LUFS (default −14, the streaming standard). Targets every dialogue-role clip unless clip_ids narrows it. Presented as a ghost-diff proposal like any edit — poll get_status for the verdict.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        target_lufs: { type: 'number', description: 'Defaults to -14' },
+        clip_ids: { type: 'array', items: { type: 'string' } }
+      }
     }
   }
 ]

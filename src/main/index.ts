@@ -9,6 +9,7 @@ import { registerSmartExportIpc } from './export/smart-render'
 import { registerCaptionsIpc } from './captions'
 import { registerMfileScheme, installMfileHandler } from './protocol'
 import {
+  assetLoudness,
   buildSnapshot,
   ensurePcmUrl,
   ensureProxyUrl,
@@ -104,6 +105,7 @@ app.whenReady().then(async () => {
     ensureProxy: (assetId) => ensureProxyUrl(assetId),
     transcribe: (assetId) => enqueueTranscription(assetId),
     denoise: (assetId) => enqueueDenoise(assetId),
+    loudness: (assetId) => assetLoudness(assetId),
     getSettings: () => ({
       autoTranscribe: getAutoTranscribe(),
       anthropicApiKey: getAnthropicApiKey(),

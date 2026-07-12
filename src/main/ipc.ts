@@ -76,6 +76,7 @@ export interface IpcDeps {
   ensureProxy(assetId: string): Promise<string>
   transcribe(assetId: string): void
   denoise(assetId: string): void
+  loudness(assetId: string): Promise<number | null>
   getSettings(): {
     autoTranscribe: boolean
     anthropicApiKey: string | null
@@ -134,6 +135,10 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
   handleValidated(IPC.mediaDenoise, assetIdPayloadSchema, async (payload) => {
     deps.denoise(payload.assetId)
   })
+
+  handleValidated(IPC.mediaLoudness, assetIdPayloadSchema, (payload) =>
+    deps.loudness(payload.assetId)
+  )
 
   handleValidated(IPC.settingsGet, z.undefined(), async () => deps.getSettings())
 
