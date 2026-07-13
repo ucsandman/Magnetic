@@ -30,6 +30,15 @@ function slugify(title: string): string {
  * marker, the next `clip:` marker, start+90s, or the sequence end. Reuses
  * the kernel's visible-marker projection, so invisible markers (their
  * asset no longer shown by any clip) are excluded for free.
+ *
+ * Degenerate segments (endSec <= startSec — an `end` marker on the same
+ * flick, or a `clip:` marker at/past the spine end via an overhanging
+ * connected clip) are DROPPED: they are unrenderable, dropping is
+ * deterministic, and the export dialog's segment count surfaces it.
+ *
+ * Ids: slug of the title; duplicate slugs get -2/-3 suffixes in startSec
+ * order. A title that slugs to empty falls back to `segment-<n>`, n = the
+ * 1-based position among the derived (surviving) segments.
  */
 export function deriveSegments(sequence: Sequence): Segment[] {
   const boundaries = visibleMarkers(sequence)
@@ -57,6 +66,7 @@ export function deriveSegments(sequence: Sequence): Segment[] {
       boundary.seqFlicks + capFlicks,
       sequenceEndFlicks
     )
+    if (endFlicks <= boundary.seqFlicks) continue // degenerate: unrenderable, drop
     segments.push({
       title: boundary.title,
       startSec: flicksToSeconds(boundary.seqFlicks),
@@ -65,8 +75,9 @@ export function deriveSegments(sequence: Sequence): Segment[] {
   }
 
   const slugCounts = new Map<string, number>()
-  return segments.map((segment) => {
+  return segments.map((segment, index) => {
     const base = slugify(segment.title)
+    if (base === '') return { id: `segment-${index + 1}`, ...segment }
     const count = (slugCounts.get(base) ?? 0) + 1
     slugCounts.set(base, count)
     const id = count === 1 ? base : `${base}-${count}`
