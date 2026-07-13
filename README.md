@@ -10,7 +10,7 @@
 
 Magnetic timeline · WebCodecs/WebGL2 playback · edit-by-transcript · auto silence removal · keyframe animation · smart-render export. Built for long-form creator workflows — multi-hour recordings play with a flat memory footprint and export at disk speed.
 
-![Magnetic — timeline with an edit](docs/screenshots/timeline-with-edit.png)
+![Magnetic — blade, ripple delete, and the gap closes itself](docs/screenshots/readme.gif)
 
 > Portfolio project. The design is an homage to Apple's Final Cut Pro — the magnetic timeline, three-panel layout, JKL transport, and edit grammar are modeled on it as the design reference. Not affiliated with Apple; no Apple trademarks are used and "Magnetic" is an original product name.
 
