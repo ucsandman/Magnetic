@@ -1,5 +1,6 @@
 import { execFile } from 'child_process'
-import { existsSync, mkdirSync } from 'fs'
+import { randomUUID } from 'crypto'
+import { existsSync, mkdirSync, renameSync, rmSync } from 'fs'
 import { join } from 'path'
 import { promisify } from 'util'
 import type { MediaAsset } from '../../shared/types'
@@ -30,25 +31,46 @@ export async function ensurePcm(libraryRoot: string, asset: MediaAsset): Promise
   const absPath = join(libraryRoot, relPath)
   if (!existsSync(absPath)) {
     mkdirSync(join(libraryRoot, 'cache', 'pcm'), { recursive: true })
-    await execFileAsync(
-      ffmpegPath(),
-      [
-        '-v',
-        'error',
-        '-y',
-        '-i',
-        join(libraryRoot, denoisedSource ?? asset.libraryRelPath),
-        '-vn',
-        '-acodec',
-        'pcm_s16le',
-        '-ar',
-        '48000',
-        '-ac',
-        '2',
-        absPath
-      ],
-      { windowsHide: true }
-    )
+    // Never let ffmpeg write absPath directly: concurrent same-asset callers
+    // would each pass the missing-file check and race `-y` writes onto one
+    // path, and a caller reading it mid-rewrite gets a torn wav (the export
+    // "Unable to decode audio data" bug). Extract to a private temp, then
+    // rename into place (atomic on the same volume). randomUUID, not pid:
+    // concurrent callers share the one main-process pid. The temp has no .wav
+    // extension, so `-f wav` names the muxer explicitly.
+    const tmpPath = `${absPath}.tmp-${randomUUID()}`
+    try {
+      await execFileAsync(
+        ffmpegPath(),
+        [
+          '-v',
+          'error',
+          '-y',
+          '-i',
+          join(libraryRoot, denoisedSource ?? asset.libraryRelPath),
+          '-vn',
+          '-acodec',
+          'pcm_s16le',
+          '-ar',
+          '48000',
+          '-ac',
+          '2',
+          '-f',
+          'wav',
+          tmpPath
+        ],
+        { windowsHide: true }
+      )
+      if (existsSync(absPath)) {
+        // a concurrent extraction won the race — keep its identical result
+        rmSync(tmpPath, { force: true })
+      } else {
+        renameSync(tmpPath, absPath)
+      }
+    } catch (error) {
+      rmSync(tmpPath, { force: true })
+      throw error
+    }
   }
   return relPath
 }
