@@ -124,7 +124,6 @@ export function TranscriptPanel(): ReactNode {
           onClick={deleteSelection}
         >
           Cut selection
-          {selectionRange !== null ? ` (${selectionRange.hi - selectionRange.lo + 1})` : ''}
         </button>
         <button
           type="button"

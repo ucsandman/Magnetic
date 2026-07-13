@@ -128,7 +128,15 @@ test('phase 7: MCP bridge — perceive, propose, human accepts, toggle severs', 
     expect((init.result as { serverInfo: { name: string } }).serverInfo.name).toBe('magnetic-mcp')
     const list = await client.request('tools/list')
     const names = (list.result as { tools: { name: string }[] }).tools.map((tool) => tool.name)
-    expect(names.sort()).toEqual(['check_flow', 'get_status', 'propose_edits', 'read_timeline'])
+    expect(names.sort()).toEqual([
+      'check_flow',
+      'cut_words',
+      'duck_music',
+      'get_status',
+      'normalize_loudness',
+      'propose_edits',
+      'read_timeline'
+    ])
 
     // ---- perception: the external agent sees the real open sequence ----
     const timeline = await client.callTool('read_timeline')
