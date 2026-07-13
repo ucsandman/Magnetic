@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
-import { clip, seq } from '../../shared/timeline/testing'
+import { clip, connected, seq } from '../../shared/timeline/testing'
 import type { AudioEnvelope, Transcript } from '../../shared/types'
 import { buildCopilotContext, TRANSCRIPT_CHAR_CAP } from './context'
 
@@ -33,6 +33,18 @@ describe('buildCopilotContext', () => {
     expect(context).toContain('10.0s') // total duration
     expect(context).toContain('0:00.0') // clip start
     expect(context).toContain('id=a') // tools address clips by id
+  })
+
+  it('tags each spine clip with its source fileName — provenance for verdict mapping', () => {
+    const context = buildCopilotContext(seq([clip('a', 300)]), new Map(), new Map(), names)
+    expect(context).toContain('[file=interview.mp4]')
+  })
+
+  it('tags connected media clips with fileName too, but not titles', () => {
+    const withConnected = seq([clip('a', 300)], [connected('c', 'a', 0, 30)])
+    const ccNames = new Map([...names, ['asset-c', 'broll.mp4']])
+    const context = buildCopilotContext(withConnected, new Map(), new Map(), ccNames)
+    expect(context).toContain('[file=broll.mp4]')
   })
 
   it('includes the transcript with timestamps', () => {

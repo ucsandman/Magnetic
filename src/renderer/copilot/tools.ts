@@ -5,8 +5,11 @@ import type { Sequence, TransitionKind } from '../../shared/timeline/model'
 import {
   addMarker,
   addTransition,
+  append,
   blade,
+  connectAt,
   DEFAULT_FX,
+  insertAt,
   move,
   removeMarker,
   rippleDelete,
@@ -18,7 +21,7 @@ import {
   trimRipple,
   type OpResult
 } from '../../shared/timeline/ops'
-import { clipAtTime, spineStartOf } from '../../shared/timeline/model'
+import { clipAtTime, sequenceDuration, spineStartOf } from '../../shared/timeline/model'
 import { validateSequence } from '../../shared/timeline/validate'
 
 /**
@@ -37,6 +40,25 @@ function fmtTime(flicks: number): string {
   const min = Math.floor(totalSec / 60)
   const rem = totalSec - min * 60
   return `${min}:${rem.toFixed(1).padStart(4, '0')}`
+}
+
+/** Minimal asset-record fields the assemble ops need to synthesize a new clip. */
+export interface AssetSource {
+  durationFlicks: number
+}
+
+/** Deterministic id for a brand-new clip: `${assetId}#1`, `${assetId}#2`, … on collision. */
+function freshClipId(scratch: Sequence, assetId: string): string {
+  const used = new Set<string>()
+  for (const item of scratch.spine) used.add(item.id)
+  for (const cc of scratch.connected) used.add(cc.id)
+  let n = 1
+  let id = `${assetId}#${n}`
+  while (used.has(id)) {
+    n += 1
+    id = `${assetId}#${n}`
+  }
+  return id
 }
 
 export interface ToolOutcome {
@@ -92,7 +114,10 @@ const SCHEMAS = {
     text: z.string(),
     color: z.enum(MARKER_COLOR_VALUES).optional()
   }),
-  remove_marker: z.strictObject({ marker_id: z.string() })
+  remove_marker: z.strictObject({ marker_id: z.string() }),
+  append_clip: z.strictObject({ asset_id: z.string() }),
+  insert_clip: z.strictObject({ asset_id: z.string(), at_index: z.number().int().min(0) }),
+  connect_clip: z.strictObject({ asset_id: z.string(), at_sec: z.number().min(0) })
 } as const
 
 type ToolName = keyof typeof SCHEMAS
@@ -266,7 +291,12 @@ export const EDIT_TOOLS: Anthropic.Tool[] = [
   }
 ]
 
-export function executeEditTool(scratch: Sequence, name: string, input: unknown): ToolOutcome {
+export function executeEditTool(
+  scratch: Sequence,
+  name: string,
+  input: unknown,
+  assets: Readonly<Record<string, AssetSource>> = {}
+): ToolOutcome {
   if (!(name in SCHEMAS)) {
     return failure(scratch, `unknown tool "${name}" — only the declared edit tools exist`)
   }
@@ -408,6 +438,82 @@ export function executeEditTool(scratch: Sequence, name: string, input: unknown)
       timeRefFlicks = null
       break
     }
+    case 'append_clip': {
+      const a = args as z.infer<(typeof SCHEMAS)['append_clip']>
+      const asset = assets[a.asset_id]
+      if (asset === undefined) {
+        return failure(
+          scratch,
+          `unknown-asset: no asset "${a.asset_id}" — re-check import_media's returned assetId`
+        )
+      }
+      const id = freshClipId(scratch, a.asset_id)
+      timeRefFlicks = sequenceDuration(scratch)
+      result = append(scratch, {
+        clip: {
+          id,
+          assetId: a.asset_id,
+          mediaInFlicks: 0,
+          durationFlicks: asset.durationFlicks,
+          sourceDurationFlicks: asset.durationFlicks
+        }
+      })
+      summary = `Appended ${a.asset_id} (${(asset.durationFlicks / FLICKS_PER_SECOND).toFixed(1)}s) to the end`
+      break
+    }
+    case 'insert_clip': {
+      const a = args as z.infer<(typeof SCHEMAS)['insert_clip']>
+      const asset = assets[a.asset_id]
+      if (asset === undefined) {
+        return failure(
+          scratch,
+          `unknown-asset: no asset "${a.asset_id}" — re-check import_media's returned assetId`
+        )
+      }
+      const clampedIndex = Math.min(a.at_index, scratch.spine.length)
+      const at = scratch.spine
+        .slice(0, clampedIndex)
+        .reduce((sum, item) => sum + item.durationFlicks, 0)
+      const id = freshClipId(scratch, a.asset_id)
+      result = insertAt(scratch, {
+        clip: {
+          id,
+          assetId: a.asset_id,
+          mediaInFlicks: 0,
+          durationFlicks: asset.durationFlicks,
+          sourceDurationFlicks: asset.durationFlicks
+        },
+        timeFlicks: at
+      })
+      summary = `Inserted ${a.asset_id} at position ${clampedIndex + 1}, ripple`
+      timeRefFlicks = at
+      break
+    }
+    case 'connect_clip': {
+      const a = args as z.infer<(typeof SCHEMAS)['connect_clip']>
+      const asset = assets[a.asset_id]
+      if (asset === undefined) {
+        return failure(
+          scratch,
+          `unknown-asset: no asset "${a.asset_id}" — re-check import_media's returned assetId`
+        )
+      }
+      const id = freshClipId(scratch, a.asset_id)
+      const at = sec(a.at_sec)
+      result = connectAt(scratch, {
+        clip: {
+          id,
+          assetId: a.asset_id,
+          mediaInFlicks: 0,
+          durationFlicks: asset.durationFlicks,
+          sourceDurationFlicks: asset.durationFlicks
+        },
+        timeFlicks: at
+      })
+      summary = `Connected ${a.asset_id} at ${fmtTime(at)}`
+      timeRefFlicks = at
+      break
+    }
     case 'set_volume': {
       const a = args as z.infer<(typeof SCHEMAS)['set_volume']>
       const target =
@@ -444,4 +550,60 @@ export function executeEditTool(scratch: Sequence, name: string, input: unknown)
     )
   }
   return { next: result.next, ok: true, resultText: `ok — ${summary}`, summary, timeRefFlicks }
+}
+
+/** Ops whose input carries an asset_id that must resolve in the library. */
+const ASSET_ID_OPS = new Set(['append_clip', 'insert_clip', 'connect_clip'])
+
+export interface BatchOp {
+  name: string
+  input: unknown
+}
+
+export interface BatchOutcome {
+  ok: boolean
+  /** Sequence after every op; === scratch when the batch was rejected or nothing changed. */
+  next: Sequence
+  executed: { name: string; input: unknown; summary: string }[]
+  results: string[]
+  /** Set only when the whole batch was rejected before any op ran. */
+  error?: string
+}
+
+/**
+ * Run a propose_edits batch. Unlike a single failed op (which is skipped and
+ * reported in `results` while the rest of the batch proceeds), an op naming an
+ * asset_id absent from the library rejects the WHOLE batch up front — nothing
+ * runs, and the error names the offending asset so the caller can fix it.
+ */
+export function executeEditBatch(
+  scratch: Sequence,
+  ops: BatchOp[],
+  assets: Readonly<Record<string, AssetSource>> = {}
+): BatchOutcome {
+  for (const op of ops) {
+    if (!ASSET_ID_OPS.has(op.name)) continue
+    const assetId = (op.input as { asset_id?: unknown } | null)?.asset_id
+    if (typeof assetId !== 'string' || assets[assetId] === undefined) {
+      return {
+        ok: false,
+        next: scratch,
+        executed: [],
+        results: [],
+        error: `${op.name} references unknown asset_id "${String(assetId)}" — the whole batch was rejected; re-check import_media's returned assetId`
+      }
+    }
+  }
+  let next = scratch
+  const executed: { name: string; input: unknown; summary: string }[] = []
+  const results: string[] = []
+  for (const op of ops) {
+    const outcome = executeEditTool(next, op.name, op.input, assets)
+    next = outcome.next
+    results.push(`${op.name}: ${outcome.resultText}`)
+    if (outcome.summary !== null) {
+      executed.push({ name: op.name, input: op.input, summary: outcome.summary })
+    }
+  }
+  return { ok: true, next, executed, results }
 }

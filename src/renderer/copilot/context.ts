@@ -62,7 +62,7 @@ export function buildCopilotContext(
       (item.audioDisabled === true ? ' [audio detached]' : '') +
       (role !== null && role !== 'dialogue' ? ` [role: ${role}]` : '')
     lines.push(
-      `${index}. ${name} [id=${item.id}] — ${fmtTime(start)} to ${fmtTime(position)} (${fmtDur(item.durationFlicks)}), source in ${fmtTime(item.mediaInFlicks)}${notes}`
+      `${index}. ${name} [id=${item.id}] [file=${name}] — ${fmtTime(start)} to ${fmtTime(position)} (${fmtDur(item.durationFlicks)}), source in ${fmtTime(item.mediaInFlicks)}${notes}`
     )
     index += 1
   }
@@ -72,14 +72,16 @@ export function buildCopilotContext(
     lines.push('', '## Connected clips')
     for (const cc of sequence.connected) {
       const role = effectiveRole(cc)
+      const fileName = cc.titleData === undefined ? (assetNames.get(cc.assetId) ?? cc.assetId) : null
       const label =
         cc.titleData !== undefined
           ? `title "${cc.titleData.text}"`
-          : (assetNames.get(cc.assetId) ?? cc.assetId) +
+          : fileName +
             (cc.loop === true ? ' (looped bed)' : '') +
             (role !== null && role !== 'dialogue' ? ` [role: ${role}]` : '')
+      const fileTag = fileName !== null ? ` [file=${fileName}]` : ''
       lines.push(
-        `- ${label} [id=${cc.id}], lane ${cc.lane}, ${fmtDur(cc.durationFlicks)} attached to ${cc.parentClipId}`
+        `- ${label} [id=${cc.id}]${fileTag}, lane ${cc.lane}, ${fmtDur(cc.durationFlicks)} attached to ${cc.parentClipId}`
       )
     }
   }

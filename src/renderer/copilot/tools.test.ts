@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import { clip, F, seq } from '../../shared/timeline/testing'
-import { EDIT_TOOLS, executeEditTool } from './tools'
+import { EDIT_TOOLS, executeEditBatch, executeEditTool } from './tools'
 
 // 10 s + 5 s clips @30fps; b starts 1 s into its source so the edit point
 // between them has media handles on both sides (transitions need them)
 const base = seq([clip('a', 300), clip('b', 150, 30)])
+
+// 5 s of importable source media for the assemble ops (append/insert/connect).
+const assets = { 'asset-x': { durationFlicks: 5 * FLICKS_PER_SECOND } }
 
 describe('executeEditTool', () => {
   it('ripple_delete_range removes the range and reports a summary', () => {
@@ -116,6 +119,103 @@ describe('executeEditTool', () => {
     expect(removed.ok).toBe(true)
     expect(removed.next.markers).toHaveLength(0)
     expect(executeEditTool(base, 'remove_marker', { marker_id: 'zzz' }).ok).toBe(false)
+  })
+
+  it('append_clip lands a new clip at the spine end', () => {
+    const outcome = executeEditTool(base, 'append_clip', { asset_id: 'asset-x' }, assets)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.next.spine).toHaveLength(3)
+    const appended = outcome.next.spine[2]
+    expect(appended.kind).toBe('clip')
+    expect(appended.kind === 'clip' && appended.assetId).toBe('asset-x')
+    expect(appended.durationFlicks).toBe(5 * FLICKS_PER_SECOND)
+    expect(outcome.summary).toContain('asset-x')
+  })
+
+  it('insert_clip at an index ripples the rest of the spine later', () => {
+    const outcome = executeEditTool(base, 'insert_clip', { asset_id: 'asset-x', at_index: 1 }, assets)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.next.spine).toHaveLength(3)
+    expect(outcome.next.spine[0].id).toBe('a')
+    const inserted = outcome.next.spine[1]
+    expect(inserted.kind === 'clip' && inserted.assetId).toBe('asset-x')
+    expect(outcome.next.spine[2].id).toBe('b')
+    // b now starts after a's 10s plus the inserted clip's 5s
+    const bStart = outcome.next.spine
+      .slice(0, 2)
+      .reduce((sum, item) => sum + item.durationFlicks, 0)
+    expect(bStart).toBe(300 * F + 5 * FLICKS_PER_SECOND)
+  })
+
+  it('connect_clip attaches a connected clip at the requested time, lane 1 by default', () => {
+    const outcome = executeEditTool(base, 'connect_clip', { asset_id: 'asset-x', at_sec: 2 }, assets)
+    expect(outcome.ok).toBe(true)
+    expect(outcome.next.connected).toHaveLength(1)
+    const cc = outcome.next.connected[0]
+    expect(cc.assetId).toBe('asset-x')
+    expect(cc.lane).toBe(1)
+    expect(cc.parentClipId).toBe('a')
+    expect(outcome.timeRefFlicks).toBe(2 * FLICKS_PER_SECOND)
+  })
+
+  it('the assemble ops reject an unknown asset_id, naming it', () => {
+    const outcome = executeEditTool(base, 'append_clip', { asset_id: 'ghost-asset' }, assets)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.resultText).toContain('ghost-asset')
+    expect(outcome.next).toBe(base)
+  })
+
+  it('kernel clip validation still applies: a sub-frame asset is rejected', () => {
+    const tinyAssets = { 'asset-tiny': { durationFlicks: 1 } }
+    const outcome = executeEditTool(base, 'append_clip', { asset_id: 'asset-tiny' }, tinyAssets)
+    expect(outcome.ok).toBe(false)
+    expect(outcome.resultText).toContain('invalid-clip')
+  })
+})
+
+describe('executeEditBatch', () => {
+  it('rejects the WHOLE batch when any op references an unknown asset_id, naming it', () => {
+    const batch = executeEditBatch(
+      base,
+      [
+        { name: 'append_clip', input: { asset_id: 'asset-x' } },
+        { name: 'append_clip', input: { asset_id: 'ghost-asset' } }
+      ],
+      assets
+    )
+    expect(batch.ok).toBe(false)
+    expect(batch.error).toContain('ghost-asset')
+    expect(batch.next).toBe(base)
+    expect(batch.executed).toHaveLength(0)
+  })
+
+  it('runs every op in order once every asset_id resolves', () => {
+    const batch = executeEditBatch(
+      base,
+      [
+        { name: 'append_clip', input: { asset_id: 'asset-x' } },
+        { name: 'connect_clip', input: { asset_id: 'asset-x', at_sec: 1 } }
+      ],
+      assets
+    )
+    expect(batch.ok).toBe(true)
+    expect(batch.executed).toHaveLength(2)
+    expect(batch.next.spine).toHaveLength(3)
+    expect(batch.next.connected).toHaveLength(1)
+  })
+
+  it('still runs the batch (unaffected) when a non-asset op fails — same skip-and-continue as before', () => {
+    const batch = executeEditBatch(
+      base,
+      [
+        { name: 'append_clip', input: { asset_id: 'asset-x' } },
+        { name: 'blade', input: { clip_id: 'ghost', at_sec: 1 } }
+      ],
+      assets
+    )
+    expect(batch.ok).toBe(true)
+    expect(batch.executed).toHaveLength(1)
+    expect(batch.results.some((r) => r.includes('unknown-id'))).toBe(true)
   })
 })
 

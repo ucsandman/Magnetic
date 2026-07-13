@@ -12,7 +12,7 @@ import { projectTranscript } from '../transcript/projection'
 import { buildCopilotContext } from './context'
 import { ensureEnvelopes } from './envelopes'
 import { scoreFlow } from './flow-score'
-import { executeEditTool } from './tools'
+import { executeEditBatch, executeEditTool } from './tools'
 
 /**
  * The external-agent gateway: executes tool calls the sidecar forwards from
@@ -126,19 +126,12 @@ async function handleAgentTool(
       if (current.pendingProposal !== null) {
         return { error: 'a proposal is already awaiting human review — poll get_status' }
       }
-      let scratch = base
-      const executed: { name: string; input: unknown; summary: string }[] = []
-      const results: string[] = []
       for (const op of ops) {
         if (typeof op.name !== 'string') return { error: 'every op needs a string name' }
-        const outcome = executeEditTool(scratch, op.name, op.input)
-        scratch = outcome.next
-        results.push(`${op.name}: ${outcome.resultText}`)
-        if (outcome.summary !== null) {
-          executed.push({ name: op.name, input: op.input, summary: outcome.summary })
-        }
       }
-      return presentProposal(base, scratch, executed, results, lastOutcome)
+      const batch = executeEditBatch(base, ops as { name: string; input: unknown }[], snapshot.assets)
+      if (!batch.ok) return { error: batch.error }
+      return presentProposal(base, batch.next, batch.executed, batch.results, lastOutcome)
     }
     case 'cut_words': {
       const record = input as { quote?: unknown; occurrence?: unknown } | null

@@ -100,7 +100,7 @@ const TOOLS = [
   {
     name: 'propose_edits',
     description:
-      'Propose a batch of edits. Ops (times in SECONDS, clip ids from read_timeline): ripple_delete_range {from_sec,to_sec}; ripple_delete_clips {clip_ids}; blade {clip_id,at_sec}; trim_clip {clip_id,edge:head|tail,delta_sec}; move_clip {clip_id,to_index}; roll_edit {edit_point_index,delta_sec}; slip_clip {clip_id,delta_sec}; add_transition {edit_point_index,duration_sec,kind:dissolve|wipeL|wipeR|fadeBlack}; set_role {clip_id,role:dialogue|music|sfx}; set_volume {clip_id,volume_db}; add_marker {at_sec,text,color?:blue|green|orange|red}; remove_marker {marker_id}. NOTHING is applied: the human sees a ghost-diff preview and decides. Poll get_status for their verdict.',
+      'Propose a batch of edits. Ops (times in SECONDS, clip ids from read_timeline): ripple_delete_range {from_sec,to_sec}; ripple_delete_clips {clip_ids}; blade {clip_id,at_sec}; trim_clip {clip_id,edge:head|tail,delta_sec}; move_clip {clip_id,to_index}; roll_edit {edit_point_index,delta_sec}; slip_clip {clip_id,delta_sec}; add_transition {edit_point_index,duration_sec,kind:dissolve|wipeL|wipeR|fadeBlack}; set_role {clip_id,role:dialogue|music|sfx}; set_volume {clip_id,volume_db}; add_marker {at_sec,text,color?:blue|green|orange|red}; remove_marker {marker_id}; append_clip {asset_id} (spine end); insert_clip {asset_id,at_index} (ripple); connect_clip {asset_id,at_sec} (connected lane). asset_id comes from import_media. An unknown asset_id rejects the whole batch, naming it. NOTHING is applied: the human sees a ghost-diff preview and decides. Poll get_status for their verdict.',
     inputSchema: {
       type: 'object',
       properties: {
