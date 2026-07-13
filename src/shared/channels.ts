@@ -32,6 +32,10 @@ export const IPC = {
   transcribeRun: 'transcribe:run',
   captionsPickDestination: 'captions:pickDestination',
   captionsWriteSidecar: 'captions:writeSidecar',
+  /** Marketing handoff: pick the destination folder (native directory dialog). */
+  marketingHandoffPickDir: 'marketingHandoff:pickDir',
+  /** Marketing handoff: write captions.srt/vtt + segments.json into destDir. */
+  marketingHandoffWrite: 'marketingHandoff:write',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   /** main -> renderer push: one external agent tool call to execute. */

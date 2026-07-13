@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from 'react'
 import { FLICKS_PER_SECOND } from '../../shared/timecode'
 import { sequenceDuration } from '../../shared/timeline/model'
 import { smartRenderPlan, type SmartRenderPlan } from '../../shared/timeline/smart-render'
+import { deriveSegments } from '../../shared/timeline/segments'
 import {
   MIX_CHANNELS,
   MIX_SAMPLE_RATE,
@@ -10,22 +11,29 @@ import {
   renderMixdownWav,
   replayFrames
 } from '../playback/offline'
+import { buildCues } from '../captions/cues'
+import { toSrt, toVtt } from '../captions/format'
+import { ensureTranscripts } from '../transcript/cache'
+import { projectTranscript } from '../transcript/projection'
 import { useLibrary } from '../state/LibraryContext'
 import { useTimelineStore } from '../state/timeline-store'
 
 type Preset = '1080p' | '720p' | 'source'
+type Mode = 'movie' | 'handoff'
 
 type Phase =
   | { kind: 'configure' }
   | { kind: 'running'; framesDone: number; frameCount: number }
   | { kind: 'smart'; stage: 'audio' | 'video'; fraction: number }
-  | { kind: 'done'; destination: string }
+  | { kind: 'handoff-write' }
+  | { kind: 'done'; destination: string; segments?: number }
   | { kind: 'error'; message: string }
 
 /** File → Export (Ctrl+E): preset, destination, progress, cancel. */
 export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
   const { snapshot } = useLibrary()
   const sequence = useTimelineStore((state) => state.sequence)
+  const [mode, setMode] = useState<Mode>('movie')
   const [preset, setPreset] = useState<Preset>('1080p')
   const [destination, setDestination] = useState('')
   const [phase, setPhase] = useState<Phase>({ kind: 'configure' })
@@ -37,8 +45,16 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
   const empty = sequenceDuration(sequence) === 0
   // Stream copy cannot scale, so an explicit 720p preset takes the WYSIWYG path.
   const smartPlan = preset === '720p' ? null : smartRenderPlan(sequence)
+  // clip: markers → segments; the handoff option needs at least one (shared kernel fn).
+  const segments = deriveSegments(sequence)
+  const handoffAvailable = segments.length > 0
 
   const browse = async (): Promise<void> => {
+    if (mode === 'handoff') {
+      const dir = await window.api.marketingHandoffPickDir()
+      if (dir !== null) setDestination(dir)
+      return
+    }
     const picked = await window.api.exportPickDestination()
     if (picked !== null) setDestination(picked)
   }
@@ -48,8 +64,11 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
    * mixed audio (in chunks). Progress = audio-mix fraction, then ffmpeg's
    * out_time pushes for the copy phase.
    */
-  const startSmart = async (smart: SmartRenderPlan): Promise<void> => {
-    const dest = destination.trim()
+  const startSmart = async (
+    smart: SmartRenderPlan,
+    dest: string,
+    afterMovie?: () => Promise<void>
+  ): Promise<void> => {
     const durSec = smart.durationFlicks / FLICKS_PER_SECOND
     smartActiveRef.current = true
     setPhase({ kind: 'smart', stage: 'audio', fraction: 0 })
@@ -79,7 +98,8 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
       }
       setPhase({ kind: 'smart', stage: 'video', fraction: 0 })
       await window.api.smartExportMux()
-      setPhase({ kind: 'done', destination: dest })
+      if (afterMovie !== undefined) await afterMovie()
+      else setPhase({ kind: 'done', destination: dest })
     } catch (error) {
       await window.api.smartExportCancel().catch(() => undefined)
       if (cancelledRef.current) {
@@ -96,11 +116,15 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
     }
   }
 
-  const start = async (): Promise<void> => {
-    if (destination.trim() === '' || empty) return
+  /**
+   * Render the movie to `dest` via the existing export path (smart-render copy
+   * or WYSIWYG frame pipe). On success runs `afterMovie` (the handoff's sidecar
+   * stage) if given, otherwise lands on the plain done state.
+   */
+  const runMovie = async (dest: string, afterMovie?: () => Promise<void>): Promise<void> => {
     cancelledRef.current = false
     if (smartPlan !== null) {
-      await startSmart(smartPlan)
+      await startSmart(smartPlan, dest, afterMovie)
       return
     }
     useTimelineStore.getState().setViewerMode('sequence')
@@ -108,7 +132,7 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
     try {
       const wav = await renderMixdownWav(sequence)
       await window.api.exportStart({
-        destination: destination.trim(),
+        destination: dest,
         width: 1920,
         height: 1080,
         fps: plan.fps,
@@ -133,7 +157,8 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
         return
       }
       await window.api.exportFinish()
-      setPhase({ kind: 'done', destination: destination.trim() })
+      if (afterMovie !== undefined) await afterMovie()
+      else setPhase({ kind: 'done', destination: dest })
     } catch (error) {
       await window.api.exportCancel().catch(() => undefined)
       setPhase({
@@ -141,6 +166,36 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
         message: error instanceof Error ? error.message : String(error)
       })
     }
+  }
+
+  const start = async (): Promise<void> => {
+    if (destination.trim() === '' || empty) return
+    await runMovie(destination.trim())
+  }
+
+  /**
+   * One-click marketing handoff: render <destDir>/video.mp4 via the normal
+   * export path, then serialize the caption cues and hand the sidecars +
+   * segments.json to the main-process writer.
+   */
+  const startHandoff = async (): Promise<void> => {
+    const dir = destination.trim()
+    if (dir === '' || empty || !handoffAvailable) return
+    const sep = dir.includes('\\') ? '\\' : '/'
+    const videoPath = `${dir}${sep}video.mp4`
+    await runMovie(videoPath, async () => {
+      setPhase({ kind: 'handoff-write' })
+      const transcripts = await ensureTranscripts(sequence, snapshot)
+      const cues = buildCues(projectTranscript(sequence, transcripts))
+      const result = await window.api.marketingHandoffWrite({
+        destDir: dir,
+        fps: plan.fps,
+        segments,
+        srt: toSrt(cues),
+        vtt: toVtt(cues)
+      })
+      setPhase({ kind: 'done', destination: dir, segments: result.segments })
+    })
   }
 
   const cancel = (): void => {
@@ -152,9 +207,31 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
   return (
     <div className="export-overlay" data-testid="export-dialog">
       <div className="export-dialog">
-        <div className="export-title">Export Movie</div>
+        <div className="export-title">
+          {mode === 'handoff' ? 'Marketing Handoff' : 'Export Movie'}
+        </div>
         {phase.kind === 'configure' && (
           <>
+            <div className="export-actions" data-testid="export-mode">
+              <button
+                type="button"
+                className={mode === 'movie' ? 'active' : ''}
+                data-testid="export-mode-movie"
+                onClick={() => setMode('movie')}
+              >
+                Movie
+              </button>
+              <button
+                type="button"
+                className={mode === 'handoff' ? 'active' : ''}
+                data-testid="export-mode-handoff"
+                disabled={!handoffAvailable}
+                title={handoffAvailable ? undefined : 'Add clip: markers to define segments'}
+                onClick={() => setMode('handoff')}
+              >
+                Marketing Handoff
+              </button>
+            </div>
             <label className="fx-field">
               <span>Preset</span>
               <select
@@ -168,17 +245,19 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
               </select>
             </label>
             <label className="fx-field">
-              <span>Destination</span>
+              <span>{mode === 'handoff' ? 'Folder' : 'Destination'}</span>
               <input
                 type="text"
                 data-testid="export-destination"
-                placeholder="C:\\path\\to\\export.mp4"
+                placeholder={
+                  mode === 'handoff' ? 'C:\\path\\to\\handoff-folder' : 'C:\\path\\to\\export.mp4'
+                }
                 value={destination}
                 onChange={(event) => setDestination(event.target.value)}
               />
             </label>
             <button type="button" onClick={() => void browse()}>
-              Browse…
+              {mode === 'handoff' ? 'Choose Folder…' : 'Browse…'}
             </button>
             <div className="export-estimate" data-testid="export-estimate">
               {plan.frameCount} frames · {plan.durationSec.toFixed(2)} s ·{' '}
@@ -189,16 +268,34 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
                 Smart render — video passthrough (no re-encode)
               </div>
             )}
+            {mode === 'handoff' && (
+              <div className="export-estimate" data-testid="handoff-segments-note">
+                {segments.length} segment{segments.length === 1 ? '' : 's'} → video.mp4 +
+                captions.srt/vtt + segments.json
+              </div>
+            )}
             <div className="export-actions">
-              <button
-                type="button"
-                className="primary"
-                data-testid="export-start"
-                disabled={destination.trim() === '' || empty}
-                onClick={() => void start()}
-              >
-                Export
-              </button>
+              {mode === 'handoff' ? (
+                <button
+                  type="button"
+                  className="primary"
+                  data-testid="handoff-start"
+                  disabled={destination.trim() === '' || empty || !handoffAvailable}
+                  onClick={() => void startHandoff()}
+                >
+                  Export Handoff
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="primary"
+                  data-testid="export-start"
+                  disabled={destination.trim() === '' || empty}
+                  onClick={() => void start()}
+                >
+                  Export
+                </button>
+              )}
               <button type="button" data-testid="export-close" onClick={onClose}>
                 Close
               </button>
@@ -232,9 +329,18 @@ export function ExportDialog({ onClose }: { onClose(): void }): ReactNode {
             </div>
           </>
         )}
+        {phase.kind === 'handoff-write' && (
+          <div data-testid="export-progress">Writing captions &amp; segments…</div>
+        )}
         {phase.kind === 'done' && (
           <>
-            <div data-testid="export-success">Exported to {phase.destination}</div>
+            <div data-testid="export-success">
+              {phase.segments === undefined
+                ? `Exported to ${phase.destination}`
+                : `Handoff exported — ${phase.segments} segment${
+                    phase.segments === 1 ? '' : 's'
+                  } to ${phase.destination}`}
+            </div>
             <div className="export-actions">
               <button type="button" data-testid="export-close" onClick={onClose}>
                 Close

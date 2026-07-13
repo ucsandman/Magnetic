@@ -36,6 +36,8 @@ const api: MagneticApi = {
   captionsPickDestination: (format) => ipcRenderer.invoke(IPC.captionsPickDestination, { format }),
   captionsWriteSidecar: (destination, content) =>
     ipcRenderer.invoke(IPC.captionsWriteSidecar, { destination, content }),
+  marketingHandoffPickDir: () => ipcRenderer.invoke(IPC.marketingHandoffPickDir),
+  marketingHandoffWrite: (args) => ipcRenderer.invoke(IPC.marketingHandoffWrite, args),
   getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
   setSettings: (settings) => ipcRenderer.invoke(IPC.settingsSet, settings),
   agentStatus: () => ipcRenderer.invoke(IPC.agentStatus),

@@ -181,6 +181,30 @@ export const captionsWriteSidecarPayloadSchema = z.object({
   content: z.string()
 })
 
+/** One derived marketing-handoff segment (mirrors shared/timeline/segments.ts). */
+const handoffSegmentSchema = z.object({
+  id: z.string().min(1),
+  title: z.string(),
+  startSec: z.number().nonnegative(),
+  endSec: z.number().positive()
+})
+
+/**
+ * Marketing handoff sidecar write: the renderer has already produced
+ * <destDir>/video.mp4 via the normal export round-trip and serialized the
+ * caption cues. Main writes captions.srt/vtt + segments.json (stamping
+ * exportedAt from its own clock) and re-checks the zero-segments invariant.
+ */
+export const marketingHandoffWritePayloadSchema = z.object({
+  destDir: z.string().min(1),
+  fps: rationalSchema,
+  segments: z.array(handoffSegmentSchema),
+  srt: z.string(),
+  vtt: z.string()
+})
+export type MarketingHandoffWritePayload = z.infer<typeof marketingHandoffWritePayloadSchema>
+export type MarketingHandoffSegment = z.infer<typeof handoffSegmentSchema>
+
 export interface MemoryUsage {
   rss: number
   heapUsed: number
@@ -249,6 +273,16 @@ export interface MagneticApi {
   captionsPickDestination(format: 'srt' | 'vtt'): Promise<string | null>
   /** Write a serialized SRT/VTT sidecar to the given path. */
   captionsWriteSidecar(destination: string, content: string): Promise<void>
+  /** Native directory dialog for the marketing handoff bundle; null when cancelled. */
+  marketingHandoffPickDir(): Promise<string | null>
+  /** Write captions.srt/vtt + segments.json into destDir; returns the segment count. */
+  marketingHandoffWrite(args: {
+    destDir: string
+    fps: { num: number; den: number }
+    segments: MarketingHandoffSegment[]
+    srt: string
+    vtt: string
+  }): Promise<{ segments: number }>
   getSettings(): Promise<{
     autoTranscribe: boolean
     anthropicApiKey: string | null

@@ -6,6 +6,7 @@ import { registerIpc } from './ipc'
 import { buildAppMenu, watchEditState } from './menu'
 import { registerExportIpc } from './export/encoder'
 import { registerSmartExportIpc } from './export/smart-render'
+import { registerMarketingHandoffIpc } from './export/marketing-handoff'
 import { registerCaptionsIpc } from './captions'
 import { registerMfileScheme, installMfileHandler } from './protocol'
 import {
@@ -144,6 +145,7 @@ app.whenReady().then(async () => {
   watchEditState()
   registerExportIpc()
   registerSmartExportIpc()
+  registerMarketingHandoffIpc()
   registerCaptionsIpc()
   createWindow()
 
