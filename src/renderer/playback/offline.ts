@@ -10,6 +10,7 @@ import {
   type AudioJob
 } from './audio-graph'
 import { clipGainPoints, gainAutomationFor } from './automation'
+import { decodeAssetsOnce } from './mix-decode'
 import { openPcm, type PcmSource } from './pcm-source'
 import { playbackEngine } from './engine'
 
@@ -42,17 +43,23 @@ export async function renderMixdownWav(sequence: Sequence): Promise<ArrayBuffer>
   const jobs = collectAudioJobs(sequence)
   const shortJobs = jobs.filter((job) => job.durSec <= LONG_CLIP_THRESHOLD_SEC)
   const longJobs = jobs.filter((job) => job.durSec > LONG_CLIP_THRESHOLD_SEC)
-  const buffers = await Promise.all(
-    shortJobs.map(async (job) => {
-      const url = await window.api.ensurePcm(job.assetId)
+  // Decode each DISTINCT asset once (not once per clip): N clips of one cold
+  // recording would otherwise race N concurrent ensurePcm writes onto the same
+  // pcm cache wav and hand decodeAudioData a torn read (see mix-decode.ts).
+  const decoded = await decodeAssetsOnce(
+    shortJobs.map((job) => job.assetId),
+    async (assetId) => {
+      const url = await window.api.ensurePcm(assetId)
       if (url === null) return null
       const data = await (await fetch(url)).arrayBuffer()
       return ctx.decodeAudioData(data)
-    })
+    }
   )
-  for (let i = 0; i < shortJobs.length; i++) {
-    const buffer = buffers[i]
-    if (buffer !== null) scheduleAudioJob(ctx, ctx.destination, buffer, shortJobs[i], 0, 0)
+  for (const job of shortJobs) {
+    const buffer = decoded.get(job.assetId)
+    if (buffer !== null && buffer !== undefined) {
+      scheduleAudioJob(ctx, ctx.destination, buffer, job, 0, 0)
+    }
   }
   const firstWindowError = await scheduleWindowedJobsOffline(ctx, longJobs)
   const rendered = await ctx.startRendering()
