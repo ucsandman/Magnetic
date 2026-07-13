@@ -13,6 +13,7 @@ interface SidebarProps {
 export function Sidebar({ snapshot, selectedEventId, onSelectEvent }: SidebarProps): ReactNode {
   const [autoTranscribe, setAutoTranscribe] = useState(true)
   const [agentAccess, setAgentAccess] = useState(false)
+  const [agentMediaFolders, setAgentMediaFolders] = useState<string[]>([])
   const [agentStatus, setAgentStatus] = useState<{ port: number | null; token: string | null }>({
     port: null,
     token: null
@@ -27,9 +28,14 @@ export function Sidebar({ snapshot, selectedEventId, onSelectEvent }: SidebarPro
     void window.api.getSettings().then((settings) => {
       setAutoTranscribe(settings.autoTranscribe)
       setAgentAccess(settings.agentAccess)
+      setAgentMediaFolders(settings.agentMediaFolders)
     })
     refreshAgentStatus()
   }, [])
+  const saveAgentMediaFolders = (next: string[]): void => {
+    setAgentMediaFolders(next)
+    void window.api.setSettings({ agentMediaFolders: next })
+  }
   return (
     <nav className="browser-sidebar" data-testid="browser-sidebar">
       <div className="sidebar-library">{snapshot.name}</div>
@@ -128,6 +134,46 @@ export function Sidebar({ snapshot, selectedEventId, onSelectEvent }: SidebarPro
             }}
           >
             Rotate
+          </button>
+        </div>
+      )}
+      {agentAccess && (
+        <div className="sidebar-agent-folders" data-testid="agent-media-folders">
+          <span className="sidebar-setting-note">Agents may read media from:</span>
+          {agentMediaFolders.length === 0 ? (
+            <span className="sidebar-agent-folders-empty">No folders allowed yet</span>
+          ) : (
+            <ul>
+              {agentMediaFolders.map((folder) => (
+                <li key={folder}>
+                  <span className="sidebar-agent-folder-path" title={folder}>
+                    {folder}
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="agent-folder-remove"
+                    title="Stop allowing this folder"
+                    onClick={() => {
+                      saveAgentMediaFolders(agentMediaFolders.filter((existing) => existing !== folder))
+                    }}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            type="button"
+            data-testid="agent-folder-add"
+            onClick={() => {
+              void window.api.agentFolderPickDialog().then((picked) => {
+                if (picked === null || agentMediaFolders.includes(picked)) return
+                saveAgentMediaFolders([...agentMediaFolders, picked])
+              })
+            }}
+          >
+            Add folder…
           </button>
         </div>
       )}

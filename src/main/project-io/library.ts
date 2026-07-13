@@ -22,6 +22,8 @@ interface SettingsJson {
   agentAccess?: boolean
   /** Bearer token for the agent sidecar; generated on first enable, rotatable. */
   agentToken?: string
+  /** Directories agents may read media from. Empty (default) = reject everything. */
+  agentMediaFolders?: string[]
 }
 
 export function getAutoTranscribe(): boolean {
@@ -57,6 +59,14 @@ export function getAgentToken(): string | null {
 
 export function setAgentToken(agentToken: string): void {
   writeSettings({ ...readSettings(), agentToken })
+}
+
+export function getAgentMediaFolders(): string[] {
+  return readSettings().agentMediaFolders ?? []
+}
+
+export function setAgentMediaFolders(agentMediaFolders: string[]): void {
+  writeSettings({ ...readSettings(), agentMediaFolders })
 }
 
 const AUTOSAVE_DELAY_MS = 500

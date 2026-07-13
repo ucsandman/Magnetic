@@ -288,15 +288,19 @@ export interface MagneticApi {
     anthropicApiKey: string | null
     agentAccess: boolean
     agentToken: string | null
+    agentMediaFolders: string[]
   }>
   setSettings(settings: {
     autoTranscribe?: boolean
     anthropicApiKey?: string | null
     agentAccess?: boolean
     agentToken?: string
+    agentMediaFolders?: string[]
   }): Promise<void>
   /** Is the agent sidecar running, on which loopback port, with which token. */
   agentStatus(): Promise<{ running: boolean; port: number | null; token: string | null }>
+  /** Native directory dialog to add an Agent Access media folder; null when cancelled. */
+  agentFolderPickDialog(): Promise<string | null>
   /** External agent tool calls pushed from the sidecar for the gateway to run. */
   onAgentRequest(cb: (request: { id: string; tool: string; input: unknown }) => void): () => void
   /** The gateway's answer for a pushed agent request. */

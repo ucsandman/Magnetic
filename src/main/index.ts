@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, nativeTheme } from 'electron'
+import { app, dialog, shell, BrowserWindow, nativeTheme } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -33,10 +33,12 @@ import {
 } from './agent-sidecar'
 import {
   getAgentAccess,
+  getAgentMediaFolders,
   getAgentToken,
   getAnthropicApiKey,
   getAutoTranscribe,
   setAgentAccess,
+  setAgentMediaFolders,
   setAgentToken,
   setAnthropicApiKey,
   setAutoTranscribe
@@ -111,12 +113,14 @@ app.whenReady().then(async () => {
       autoTranscribe: getAutoTranscribe(),
       anthropicApiKey: getAnthropicApiKey(),
       agentAccess: getAgentAccess(),
-      agentToken: getAgentToken()
+      agentToken: getAgentToken(),
+      agentMediaFolders: getAgentMediaFolders()
     }),
     setSettings: (settings) => {
       if (settings.autoTranscribe !== undefined) setAutoTranscribe(settings.autoTranscribe)
       if (settings.anthropicApiKey !== undefined) setAnthropicApiKey(settings.anthropicApiKey)
       if (settings.agentToken !== undefined) setAgentToken(settings.agentToken)
+      if (settings.agentMediaFolders !== undefined) setAgentMediaFolders(settings.agentMediaFolders)
       if (settings.agentAccess !== undefined) {
         setAgentAccess(settings.agentAccess)
         if (settings.agentAccess) {
@@ -136,6 +140,13 @@ app.whenReady().then(async () => {
     },
     agentStatus: () => agentSidecarStatus(),
     agentRespond: (id, result) => resolveAgentRequest(id, result),
+    agentFolderPickDialog: async () => {
+      const picked = await dialog.showOpenDialog({
+        title: 'Agent Access — allow a media folder',
+        properties: ['openDirectory']
+      })
+      return picked.canceled || picked.filePaths.length === 0 ? null : picked.filePaths[0]
+    },
     relink: (assetId) => relinkViaDialog(assetId),
     relinkPath: (assetId, path) => relinkAsset(assetId, path)
   })

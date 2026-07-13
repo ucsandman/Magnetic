@@ -1682,6 +1682,45 @@ select,
   color: var(--color-text-dim);
 }
 
+.sidebar-agent-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+.sidebar-agent-folders ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-agent-folders li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-agent-folder-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-small);
+  color: var(--color-text-dim);
+}
+
+.sidebar-agent-folders-empty {
+  font-size: var(--font-size-small);
+  color: var(--color-text-dim);
+}
+
+.sidebar-agent-folders button {
+  font-size: var(--font-size-small);
+}
+
 .asset-missing-badge {
   background: #b3261e;
   color: #fff;

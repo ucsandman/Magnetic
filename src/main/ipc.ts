@@ -82,14 +82,17 @@ export interface IpcDeps {
     anthropicApiKey: string | null
     agentAccess: boolean
     agentToken: string | null
+    agentMediaFolders: string[]
   }
   setSettings(settings: {
     autoTranscribe?: boolean
     anthropicApiKey?: string | null
     agentAccess?: boolean
     agentToken?: string
+    agentMediaFolders?: string[]
   }): void
   agentStatus(): { running: boolean; port: number | null; token: string | null }
+  agentFolderPickDialog(): Promise<string | null>
   agentRespond(id: string, result: unknown): void
   relink(assetId: string): Promise<void>
   relinkPath(assetId: string, path: string): Promise<void>
@@ -149,7 +152,8 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
         autoTranscribe: z.boolean().optional(),
         anthropicApiKey: z.string().nullable().optional(),
         agentAccess: z.boolean().optional(),
-        agentToken: z.string().min(8).optional()
+        agentToken: z.string().min(8).optional(),
+        agentMediaFolders: z.array(z.string()).optional()
       })
       .refine((payload) => Object.keys(payload).length > 0, 'empty settings payload'),
     async (payload) => {
@@ -158,6 +162,10 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
   )
 
   handleValidated(IPC.agentStatus, z.undefined(), async () => deps.agentStatus())
+
+  handleValidated(IPC.agentFolderPickDialog, z.undefined(), async () =>
+    deps.agentFolderPickDialog()
+  )
 
   handleValidated(
     IPC.agentRespond,

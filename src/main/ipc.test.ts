@@ -29,10 +29,12 @@ const deps: IpcDeps = {
     autoTranscribe: true,
     anthropicApiKey: null,
     agentAccess: false,
-    agentToken: null
+    agentToken: null,
+    agentMediaFolders: []
   }),
   setSettings: () => {},
   agentStatus: () => ({ running: false, port: null, token: null }),
+  agentFolderPickDialog: async () => null,
   agentRespond: () => {},
   relink: async () => {},
   relinkPath: async () => {}
@@ -53,7 +55,7 @@ describe('malformed payloads reject on every channel', () => {
       string,
       (event: unknown, payload: unknown) => Promise<unknown>
     ][]
-    expect(handlers.length).toBeGreaterThanOrEqual(14)
+    expect(handlers.length).toBeGreaterThanOrEqual(15)
     // a payload that satisfies NO channel schema (wrong types everywhere)
     const garbage = { assetId: 42, paths: 'nope', rating: 'meh', projectId: null, bogus: true }
     for (const [channel, handler] of handlers) {

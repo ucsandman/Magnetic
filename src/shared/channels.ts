@@ -44,6 +44,8 @@ export const IPC = {
   agentRespond: 'agent:respond',
   /** renderer -> main: is the agent sidecar running, on which port, which token. */
   agentStatus: 'agent:status',
+  /** Native directory dialog to add an Agent Access media folder. */
+  agentFolderPickDialog: 'agent:folderPickDialog',
   /** main -> renderer push: full library snapshot after any change */
   libraryChanged: 'library:changed',
   /** main -> renderer push: Edit menu command ('undo' | 'redo') */
