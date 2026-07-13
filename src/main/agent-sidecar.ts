@@ -5,6 +5,9 @@ import { createServer, type Server } from 'http'
 import { join } from 'path'
 import type { Socket } from 'net'
 import { IPC } from '../shared/channels'
+import { getAgentMediaFolders } from './agent-allowlist'
+import { handleImportMedia, type ImportMediaDeps } from './agent-import'
+import { getStore, importAndProcess } from './app-state'
 
 /**
  * The agent door (structural clone of media-server.ts): a loopback HTTP
@@ -15,9 +18,25 @@ import { IPC } from '../shared/channels'
  * exactly like the in-app copilot. There is no live-write path and no export
  * surface here, by construction.
  *
+ * import_media is the one exception: it lands assets directly (no proposal
+ * gate — see agent-import.ts), and importAndProcess is main-process work, so
+ * it is dispatched here rather than forwarded to the renderer.
+ *
  * Off by default. Starts when the Agent Access setting (or MAGNETIC_AGENT=1)
  * says so; flipping the setting off severs every connection immediately.
  */
+
+const importMediaDeps: ImportMediaDeps = {
+  allowlist: getAgentMediaFolders,
+  importAndProcess,
+  fileNameOf: (assetId) => getStore().assets[assetId]?.fileName
+}
+
+/** Dispatch one tool call: import_media runs in main; everything else forwards to the renderer. */
+function dispatchTool(tool: string, input: unknown): Promise<unknown> {
+  if (tool === 'import_media') return handleImportMedia(input, importMediaDeps)
+  return callRenderer(tool, input)
+}
 
 export interface AgentSidecarStatus {
   running: boolean
@@ -93,7 +112,7 @@ export async function startAgentSidecar(sharedToken: string): Promise<AgentSidec
         try {
           const payload = JSON.parse(body) as { tool?: unknown; input?: unknown }
           if (typeof payload.tool !== 'string') throw new Error('missing tool name')
-          const result = await callRenderer(payload.tool, payload.input)
+          const result = await dispatchTool(payload.tool, payload.input)
           res.writeHead(200).end(JSON.stringify({ result }))
         } catch (error) {
           res

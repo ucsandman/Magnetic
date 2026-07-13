@@ -6,8 +6,11 @@
  * stdio) so any MCP client (Claude Code, Claude Desktop, custom harnesses)
  * can see and co-edit the OPEN project. Zero dependencies.
  *
- * Every write is a PROPOSAL: it ghost-renders on the editor's timeline and
- * applies only when the human clicks Accept. There is no export tool.
+ * Every timeline edit is a PROPOSAL: it ghost-renders on the editor's
+ * timeline and applies only when the human clicks Accept. There is no
+ * export tool. The one exception is import_media, which lands assets
+ * directly in the open library (visible in the browser, no proposal gate) —
+ * imports are additive and allowlisted, not edits to existing work.
  *
  * Config: MAGNETIC_AGENT_PORT + MAGNETIC_AGENT_TOKEN env vars, or the
  * discovery file the editor writes while Agent Access is enabled
@@ -66,6 +69,16 @@ async function callSidecar(tool, input) {
 }
 
 const TOOLS = [
+  {
+    name: 'import_media',
+    description:
+      "Import video files from the user's allowlisted agent media folders into the open library. Rejects paths outside the allowlist.",
+    inputSchema: {
+      type: 'object',
+      properties: { paths: { type: 'array', items: { type: 'string' } } },
+      required: ['paths']
+    }
+  },
   {
     name: 'read_timeline',
     description:
