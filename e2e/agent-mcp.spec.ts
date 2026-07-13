@@ -1,11 +1,12 @@
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test'
 import { execFileSync, spawn, type ChildProcess } from 'child_process'
-import { mkdtempSync } from 'fs'
+import { copyFileSync, mkdirSync, mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { createInterface, type Interface } from 'readline'
 
 const ROOT = join(__dirname, '..')
+const FIXTURES = join(ROOT, 'fixtures')
 const FFMPEG = join(ROOT, 'resources', 'bin', 'ffmpeg.exe')
 // deterministic per-run test credential, injected via env — not a real secret
 const TOKEN = ['not', 'a', 'secret', 'e2e', 'fixture', 'token'].join('-')
@@ -133,6 +134,7 @@ test('phase 7: MCP bridge — perceive, propose, human accepts, toggle severs', 
       'cut_words',
       'duck_music',
       'get_status',
+      'import_media',
       'normalize_loudness',
       'propose_edits',
       'read_timeline'
@@ -181,6 +183,102 @@ test('phase 7: MCP bridge — perceive, propose, human accepts, toggle severs', 
     const severed = await client.callTool('read_timeline')
     expect(severed.isError).toBe(true)
     console.log(`severed: ${severed.text}`)
+  } finally {
+    client.close()
+  }
+  await app.close()
+})
+
+test('Agent access v2: import_media + assemble ops + accept + provenance', async () => {
+  test.setTimeout(300_000)
+  const tempRoot = mkdtempSync(join(tmpdir(), 'magnetic-mcp-v2-'))
+  const mediaDir = join(tempRoot, 'incoming')
+  mkdirSync(mediaDir)
+  const barsPath = join(mediaDir, 'bars-1080p30.mp4') // 10 s fixture
+  const redPath = join(mediaDir, 'red-720p25.mp4') // 8 s fixture
+  copyFileSync(join(FIXTURES, 'bars-1080p30.mp4'), barsPath)
+  copyFileSync(join(FIXTURES, 'red-720p25.mp4'), redPath)
+
+  const app = await launchApp(join(tempRoot, 'V2.mglib'))
+  const page = await app.firstWindow()
+  await page.waitForFunction(() => {
+    const hooked = window as unknown as { __magneticState?: () => { sequence: unknown } }
+    return hooked.__magneticState !== undefined && hooked.__magneticState().sequence !== null
+  })
+  // allowlist the temp dir the fixtures were copied into — the cleanest
+  // existing seam (same settings IPC the sidebar's folder picker uses)
+  await page.evaluate((dir) => window.api.setSettings({ agentMediaFolders: [dir] }), mediaDir)
+
+  const status = await page.evaluate(() => window.api.agentStatus())
+  expect(status.running).toBe(true)
+  const client = new McpClient(status.port!)
+  try {
+    await client.request('initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: 'e2e', version: '0' }
+    })
+
+    // ---- regression-pin: exact tool set, no export tool ----
+    const list = await client.request('tools/list')
+    const names = (list.result as { tools: { name: string }[] }).tools.map((tool) => tool.name)
+    expect(names.sort()).toEqual([
+      'check_flow',
+      'cut_words',
+      'duck_music',
+      'get_status',
+      'import_media',
+      'normalize_loudness',
+      'propose_edits',
+      'read_timeline'
+    ])
+
+    // ---- import_media: both fixtures land as assets ----
+    const imported = await client.callTool('import_media', { paths: [barsPath, redPath] })
+    expect(imported.isError).toBe(false)
+    const { assets } = JSON.parse(imported.text) as {
+      assets: { assetId: string; fileName: string }[]
+    }
+    expect(assets).toHaveLength(2)
+    expect(assets.map((asset) => asset.fileName).sort()).toEqual([
+      'bars-1080p30.mp4',
+      'red-720p25.mp4'
+    ])
+    const barsAsset = assets.find((asset) => asset.fileName === 'bars-1080p30.mp4')!
+    const redAsset = assets.find((asset) => asset.fileName === 'red-720p25.mp4')!
+
+    // ---- the browser reflects both imports ----
+    await expect(page.getByTestId('asset-cell-bars-1080p30.mp4')).toBeVisible()
+    await expect(page.getByTestId('asset-cell-red-720p25.mp4')).toBeVisible()
+
+    // ---- propose_edits: append both + a green marker on each ----
+    const proposal = await client.callTool('propose_edits', {
+      ops: [
+        { name: 'append_clip', input: { asset_id: barsAsset.assetId } },
+        { name: 'append_clip', input: { asset_id: redAsset.assetId } },
+        { name: 'add_marker', input: { at_sec: 2, text: 'first clip', color: 'green' } },
+        { name: 'add_marker', input: { at_sec: 13, text: 'second clip', color: 'green' } }
+      ]
+    })
+    expect(proposal.isError).toBe(false)
+    expect(proposal.text).toContain('ghost-diff')
+    await expect(page.getByTestId('agent-banner')).toBeVisible()
+
+    // ---- the human accepts from the real UI ----
+    await page.getByTestId('agent-banner-accept').click()
+
+    // ---- read_timeline shows both clips WITH [file=] provenance ----
+    const timeline = await client.callTool('read_timeline')
+    expect(timeline.isError).toBe(false)
+    expect(timeline.text).toContain('[file=bars-1080p30.mp4]')
+    expect(timeline.text).toContain('[file=red-720p25.mp4]')
+    expect(timeline.text).toContain('[green]')
+
+    // ---- negative: a path outside the allowlist rejects, naming it ----
+    const outsidePath = join(FIXTURES, 'green-prores.mov')
+    const rejected = await client.callTool('import_media', { paths: [outsidePath] })
+    expect(rejected.isError).toBe(true)
+    expect(rejected.text).toContain(outsidePath)
   } finally {
     client.close()
   }
