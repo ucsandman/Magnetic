@@ -17,6 +17,12 @@
  * (%APPDATA%/magnetic/agent-sidecar.json — "Magnetic" when packaged).
  *
  * Claude Code:  claude mcp add magnetic -- node scripts/magnetic-mcp.mjs
+ *
+ * Second role — in-app copilot subscription transport: when the editor
+ * itself spawns this shim with MAGNETIC_MCP_ROLE=copilot (plus the same
+ * port/token env), tools/list is fetched live from the sidecar's
+ * __list_tools instead of the static TOOLS list above, and tools/call
+ * results carry the sidecar's image payloads through as MCP image blocks.
  */
 
 import { readFileSync } from 'fs'
@@ -189,6 +195,14 @@ rl.on('line', (line) => {
     return
   }
   if (method === 'tools/list') {
+    if (process.env.MAGNETIC_MCP_ROLE === 'copilot') {
+      void callSidecar('__list_tools', {})
+        .then((result) => reply(id, { tools: result.tools }))
+        .catch((error) =>
+          replyError(id, error instanceof Error ? error.message : String(error))
+        )
+      return
+    }
     reply(id, { tools: TOOLS })
     return
   }
@@ -197,6 +211,15 @@ rl.on('line', (line) => {
     const input = params?.arguments ?? {}
     void callSidecar(name, input)
       .then((result) => {
+        if (result !== null && typeof result === 'object' && result.__image !== undefined) {
+          reply(id, {
+            content: [
+              { type: 'image', data: result.__image.data, mimeType: result.__image.mimeType },
+              { type: 'text', text: String(result.note ?? '') }
+            ]
+          })
+          return
+        }
         reply(id, { content: [{ type: 'text', text: JSON.stringify(result, null, 1) }] })
       })
       .catch((error) => {
