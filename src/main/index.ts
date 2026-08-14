@@ -9,6 +9,7 @@ import { registerSmartExportIpc } from './export/smart-render'
 import { registerMarketingHandoffIpc } from './export/marketing-handoff'
 import { registerCaptionsIpc } from './captions'
 import { registerMfileScheme, installMfileHandler } from './protocol'
+import { resolveClaudeCli } from './copilot-cli'
 import {
   assetLoudness,
   buildSnapshot,
@@ -146,6 +147,10 @@ app.whenReady().then(async () => {
         properties: ['openDirectory']
       })
       return picked.canceled || picked.filePaths.length === 0 ? null : picked.filePaths[0]
+    },
+    copilotCliStatus: async () => {
+      const status = await resolveClaudeCli()
+      return { found: status.found, version: status.version }
     },
     relink: (assetId) => relinkViaDialog(assetId),
     relinkPath: (assetId, path) => relinkAsset(assetId, path)

@@ -35,6 +35,7 @@ const deps: IpcDeps = {
   setSettings: () => {},
   agentStatus: () => ({ running: false, port: null, token: null }),
   agentFolderPickDialog: async () => null,
+  copilotCliStatus: async () => ({ found: false, version: null }),
   agentRespond: () => {},
   relink: async () => {},
   relinkPath: async () => {}

@@ -93,6 +93,7 @@ export interface IpcDeps {
   }): void
   agentStatus(): { running: boolean; port: number | null; token: string | null }
   agentFolderPickDialog(): Promise<string | null>
+  copilotCliStatus(): Promise<{ found: boolean; version: string | null }>
   agentRespond(id: string, result: unknown): void
   relink(assetId: string): Promise<void>
   relinkPath(assetId: string, path: string): Promise<void>
@@ -166,6 +167,8 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
   handleValidated(IPC.agentFolderPickDialog, z.undefined(), async () =>
     deps.agentFolderPickDialog()
   )
+
+  handleValidated(IPC.copilotCliStatus, z.undefined(), async () => deps.copilotCliStatus())
 
   handleValidated(
     IPC.agentRespond,

@@ -301,6 +301,8 @@ export interface MagneticApi {
   agentStatus(): Promise<{ running: boolean; port: number | null; token: string | null }>
   /** Native directory dialog to add an Agent Access media folder; null when cancelled. */
   agentFolderPickDialog(): Promise<string | null>
+  /** Is the Claude Code CLI installed and resolvable, and which version. */
+  copilotCliStatus(): Promise<{ found: boolean; version: string | null }>
   /** External agent tool calls pushed from the sidecar for the gateway to run. */
   onAgentRequest(cb: (request: { id: string; tool: string; input: unknown }) => void): () => void
   /** The gateway's answer for a pushed agent request. */

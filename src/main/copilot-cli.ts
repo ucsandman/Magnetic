@@ -8,6 +8,9 @@
  * module lives in copilot-bridge.ts / copilot-turn.ts instead.
  */
 
+import { spawn } from 'child_process'
+import { existsSync } from 'fs'
+
 export interface CliStatus {
   found: boolean
   version: string | null
@@ -94,4 +97,66 @@ export function cliErrorMessage(exitCode: number | null, stderrTail: string): st
   }
   const excerpt = stderrTail.trim().slice(-300)
   return `Claude Code failed (exit code ${exitCode})${excerpt === '' ? '.' : `: ${excerpt}`}`
+}
+
+let cachedStatus: CliStatus | null = null
+
+export function resetCliCacheForTests(): void {
+  cachedStatus = null
+}
+
+/** True for Windows shell shims that need cmd.exe to execute. */
+function needsCmdShell(path: string): boolean {
+  return /\.(cmd|bat)$/i.test(path)
+}
+
+/** Spawn a CLI path safely on Windows (.cmd shims run via cmd.exe). */
+export function spawnCli(
+  path: string,
+  args: string[],
+  env: NodeJS.ProcessEnv
+): ReturnType<typeof spawn> {
+  if (needsCmdShell(path)) {
+    return spawn('cmd.exe', ['/d', '/s', '/c', path, ...args], { env })
+  }
+  return spawn(path, args, { env })
+}
+
+function capture(path: string, args: string[]): Promise<{ code: number | null; stdout: string }> {
+  return new Promise((resolve) => {
+    let stdout = ''
+    const child = spawnCli(path, args, childEnv(process.env))
+    child.stdout?.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')))
+    child.on('error', () => resolve({ code: -1, stdout: '' }))
+    child.on('close', (code) => resolve({ code, stdout }))
+  })
+}
+
+async function findCliPath(): Promise<string | null> {
+  const override = process.env.MAGNETIC_CLAUDE_BIN
+  if (override !== undefined && override !== '') {
+    return existsSync(override) ? override : null
+  }
+  const finder = process.platform === 'win32' ? ['where', 'claude'] : ['which', 'claude']
+  const { code, stdout } = await capture(finder[0], [finder[1]])
+  if (code !== 0) return null
+  const first = stdout.split(/\r?\n/).find((line) => line.trim() !== '')
+  return first?.trim() ?? null
+}
+
+export async function resolveClaudeCli(): Promise<CliStatus> {
+  if (cachedStatus?.found === true) return cachedStatus
+  const path = await findCliPath()
+  if (path === null) {
+    cachedStatus = { found: false, version: null, path: null }
+    return cachedStatus
+  }
+  const { code, stdout } = await capture(path, ['--version'])
+  if (code !== 0) {
+    cachedStatus = { found: false, version: null, path: null }
+    return cachedStatus
+  }
+  const version = stdout.trim().split(/\s+/)[0] ?? null
+  cachedStatus = { found: true, version: version === '' ? null : version, path }
+  return cachedStatus
 }

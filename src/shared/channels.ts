@@ -46,6 +46,8 @@ export const IPC = {
   agentStatus: 'agent:status',
   /** Native directory dialog to add an Agent Access media folder. */
   agentFolderPickDialog: 'agent:folderPickDialog',
+  /** renderer -> main: is Claude Code installed, which version. */
+  copilotCliStatus: 'copilotCli:status',
   /** main -> renderer push: full library snapshot after any change */
   libraryChanged: 'library:changed',
   /** main -> renderer push: Edit menu command ('undo' | 'redo') */

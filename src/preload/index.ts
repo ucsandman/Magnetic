@@ -42,6 +42,7 @@ const api: MagneticApi = {
   setSettings: (settings) => ipcRenderer.invoke(IPC.settingsSet, settings),
   agentStatus: () => ipcRenderer.invoke(IPC.agentStatus),
   agentFolderPickDialog: () => ipcRenderer.invoke(IPC.agentFolderPickDialog),
+  copilotCliStatus: () => ipcRenderer.invoke(IPC.copilotCliStatus),
   onAgentRequest: (cb) => {
     const listener = (
       _event: unknown,

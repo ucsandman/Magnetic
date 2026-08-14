@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest'
-import { buildCliArgs, childEnv, cliErrorMessage, parseStreamLine } from './copilot-cli'
+import { mkdtempSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import {
+  buildCliArgs,
+  childEnv,
+  cliErrorMessage,
+  parseStreamLine,
+  resetCliCacheForTests,
+  resolveClaudeCli
+} from './copilot-cli'
 
 // Shapes captured from the 2026-08-14 spike run (claude 2.1.232); ids
 // replaced with word-composed fakes (secret-guard: no high-entropy literals).
@@ -85,5 +95,30 @@ describe('cliErrorMessage', () => {
   })
   it('reports a kill (null exit code) as stopped', () => {
     expect(cliErrorMessage(null, '')).toMatch(/stopped/i)
+  })
+})
+
+describe('resolveClaudeCli', () => {
+  const savedBin = process.env.MAGNETIC_CLAUDE_BIN
+  beforeEach(() => resetCliCacheForTests())
+  afterEach(() => {
+    if (savedBin === undefined) delete process.env.MAGNETIC_CLAUDE_BIN
+    else process.env.MAGNETIC_CLAUDE_BIN = savedBin
+    resetCliCacheForTests()
+  })
+
+  it('reports found with a version for a working MAGNETIC_CLAUDE_BIN override', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fakecli-'))
+    const cmdPath = join(dir, 'fake-claude.cmd')
+    writeFileSync(cmdPath, '@echo 9.9.9 (fake)\r\n')
+    process.env.MAGNETIC_CLAUDE_BIN = cmdPath
+    const status = await resolveClaudeCli()
+    expect(status).toEqual({ found: true, version: '9.9.9', path: cmdPath })
+  })
+
+  it('reports not found when the override does not exist', async () => {
+    process.env.MAGNETIC_CLAUDE_BIN = join(tmpdir(), 'no-such-claude.exe')
+    const status = await resolveClaudeCli()
+    expect(status).toEqual({ found: false, version: null, path: null })
   })
 })
