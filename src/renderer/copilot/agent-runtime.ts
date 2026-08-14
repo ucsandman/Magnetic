@@ -18,7 +18,7 @@ const MAX_TOOL_ITERATIONS = 12
  * Frozen system prompt — byte-stable so the prompt-cache prefix survives
  * across turns. Volatile content (timeline context, chat turns) comes after.
  */
-const SYSTEM_PROMPT = `You are the editing copilot inside Magnetic, a magnetic-timeline video editor. You can see the open sequence, its detected dead air, and its transcript in the context block that follows.
+export const SYSTEM_PROMPT = `You are the editing copilot inside Magnetic, a magnetic-timeline video editor. You can see the open sequence, its detected dead air, and its transcript in the context block that follows.
 
 You edit through tools, but every tool call runs against a WORKING COPY of the timeline. Nothing you do is applied: when your turn ends, the human sees your changes as a ghost preview on their timeline plus a change list, and chooses Accept or Discard. You cannot export, save, or touch anything outside the working copy.
 
@@ -269,6 +269,121 @@ export async function streamCopilotTurn(request: CopilotTurnRequest): Promise<Co
     reply: replyParts.join('') + '\n[stopped at the tool-iteration cap]',
     ops,
     proposed: scratch
+  }
+}
+
+export interface SubscriptionTurnRequest extends Omit<CopilotTurnRequest, 'apiKey' | 'turns'> {
+  question: string
+  resumeSessionId: string | null
+}
+
+export function subscriptionToolDefs(options: { flow: boolean; vision: boolean }): {
+  name: string
+  description: string
+  inputSchema: unknown
+}[] {
+  const passthrough = [
+    READ_TIMELINE_TOOL,
+    ...(options.flow ? [CHECK_FLOW_TOOL] : []),
+    ...(options.vision ? [VIEW_FILMSTRIP_TOOL] : [])
+  ]
+  return [...EDIT_TOOLS, ...passthrough].map((tool) => ({
+    name: tool.name,
+    description: tool.description ?? '',
+    inputSchema: tool.input_schema
+  }))
+}
+
+export function buildSubscriptionPrompt(
+  context: string,
+  question: string,
+  isFirstTurn: boolean
+): string {
+  if (!isFirstTurn) return question
+  return [
+    SYSTEM_PROMPT,
+    'Your editing tools are the MCP tools on the "magnetic" server. The timeline may change between turns — in any turn where you will edit, call read_timeline first and work from what it returns.',
+    '<timeline-context>',
+    context,
+    '</timeline-context>',
+    question
+  ].join('\n\n')
+}
+
+/**
+ * One subscription turn: main drives the Claude Code CLI; tool calls come
+ * back over IPC and execute here against the same scratch-sequence loop as
+ * the API path. Same proposal contract: caller turns a changed scratch into
+ * a pendingProposal ghost-diff.
+ */
+export async function streamSubscriptionTurn(
+  request: SubscriptionTurnRequest
+): Promise<CopilotTurnResult & { sessionId: string | null }> {
+  const turnId = crypto.randomUUID()
+  let scratch = request.base
+  const ops: CopilotOpEntry[] = []
+
+  const offTool = window.api.onCopilotToolRequest((call) => {
+    void (async () => {
+      if (call.tool === READ_TIMELINE_TOOL.name) {
+        await window.api.copilotToolRespond(call.id, true, request.contextOf(scratch))
+        return
+      }
+      if (call.tool === CHECK_FLOW_TOOL.name && request.flowOf !== undefined) {
+        await window.api.copilotToolRespond(call.id, true, request.flowOf(scratch))
+        return
+      }
+      if (call.tool === VIEW_FILMSTRIP_TOOL.name && request.filmstripOf !== undefined) {
+        const clipId = (call.input as { clip_id?: unknown })?.clip_id
+        const strip = typeof clipId === 'string' ? await request.filmstripOf(clipId) : null
+        if (strip === null) {
+          await window.api.copilotToolRespond(
+            call.id,
+            false,
+            'no filmstrip available for that clip id'
+          )
+        } else {
+          await window.api.copilotToolRespond(call.id, true, {
+            __image: { data: strip.data, mimeType: strip.mediaType },
+            note: strip.note
+          })
+        }
+        return
+      }
+      const outcome = executeEditTool(scratch, call.tool, call.input)
+      scratch = outcome.next
+      if (outcome.summary !== null) {
+        ops.push({ name: call.tool, input: call.input, summary: outcome.summary })
+      }
+      if (outcome.timeRefFlicks !== null) request.onToolTime?.(outcome.timeRefFlicks)
+      await window.api.copilotToolRespond(call.id, outcome.ok, outcome.resultText)
+    })()
+  })
+  const offDelta = window.api.onCopilotCliDelta((delta) => {
+    if (delta.turnId === turnId) request.onDelta(delta.text)
+  })
+  const onAbort = (): void => void window.api.copilotCliCancel(turnId)
+  request.signal?.addEventListener('abort', onAbort, { once: true })
+  try {
+    const result = await window.api.copilotCliTurn({
+      turnId,
+      prompt: buildSubscriptionPrompt(
+        request.context,
+        request.question,
+        request.resumeSessionId === null
+      ),
+      resumeSessionId: request.resumeSessionId,
+      tools: subscriptionToolDefs({
+        flow: request.flowOf !== undefined,
+        vision: request.filmstripOf !== undefined
+      })
+    })
+    if (!result.ok) throw new Error(result.message)
+    return { reply: result.reply, ops, proposed: scratch, sessionId: result.sessionId }
+  } finally {
+    offTool()
+    offDelta()
+    request.signal?.removeEventListener('abort', onAbort)
   }
 }
 
