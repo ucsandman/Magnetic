@@ -87,7 +87,7 @@ function rpc(child, id, method, params) {
 
 async function main() {
   const prompt = await readStdin()
-  const resumed = argValue('--resume') !== null
+  const resumeId = argValue('--resume')
   const config = JSON.parse(readFileSync(argValue('--mcp-config'), 'utf8'))
   const serverConfig = config.mcpServers.magnetic
   const child = spawn(serverConfig.command, serverConfig.args, {
@@ -116,14 +116,22 @@ async function main() {
   }
   await sleep(300)
   child.kill()
+  // Assert the ACTUAL resumed id, not just that --resume was passed: a wrong
+  // or stale id must fail loudly instead of quietly matching any resume.
+  const result =
+    resumeId === null
+      ? 'first-session answer'
+      : resumeId === 'fake-session-one'
+        ? 'resumed-session answer'
+        : `wrong-resume-id:${resumeId}`
   writeAndExit(
     process.stdout,
     JSON.stringify({
       type: 'result',
       subtype: 'success',
       is_error: false,
-      result: resumed ? 'resumed-session answer' : 'first-session answer',
-      session_id: resumed ? 'fake-session-two' : 'fake-session-one'
+      result,
+      session_id: resumeId === null ? 'fake-session-one' : 'fake-session-two'
     }) + '\n',
     0
   )
