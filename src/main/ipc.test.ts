@@ -38,6 +38,8 @@ const deps: IpcDeps = {
   copilotCliStatus: async () => ({ found: false, version: null }),
   agentRespond: () => {},
   copilotToolRespond: () => {},
+  copilotCliTurn: async () => ({ ok: true, reply: '', sessionId: null }),
+  copilotCliCancel: () => {},
   relink: async () => {},
   relinkPath: async () => {}
 }
@@ -65,6 +67,37 @@ describe('malformed payloads reject on every channel', () => {
         /Invalid payload/
       )
     }
+  })
+})
+
+describe('copilot CLI channels reject targeted malformed payloads', () => {
+  it('rejects junk shaped close to the real payload', async () => {
+    registerIpc(deps, { MAGNETIC_TEST: '1' })
+    const handlers = vi.mocked(ipcMain.handle).mock.calls as unknown as [
+      string,
+      (event: unknown, payload: unknown) => Promise<unknown>
+    ][]
+    const handlerFor = (channel: string): ((event: unknown, payload: unknown) => Promise<unknown>) => {
+      const found = handlers.find(([registered]) => registered === channel)
+      if (found === undefined) throw new Error(`no handler registered for ${channel}`)
+      return found[1]
+    }
+    await expect(
+      handlerFor(IPC.copilotCliTurn)({}, { turnId: 5 }),
+      `channel ${IPC.copilotCliTurn} accepted garbage`
+    ).rejects.toThrow(/Invalid payload/)
+    await expect(
+      handlerFor(IPC.copilotCliCancel)({}, {}),
+      `channel ${IPC.copilotCliCancel} accepted garbage`
+    ).rejects.toThrow(/Invalid payload/)
+    await expect(
+      handlerFor(IPC.copilotToolRespond)({}, { id: 1 }),
+      `channel ${IPC.copilotToolRespond} accepted garbage`
+    ).rejects.toThrow(/Invalid payload/)
+    await expect(
+      handlerFor(IPC.copilotCliStatus)({}, 'x'),
+      `channel ${IPC.copilotCliStatus} accepted garbage`
+    ).rejects.toThrow(/Invalid payload/)
   })
 })
 

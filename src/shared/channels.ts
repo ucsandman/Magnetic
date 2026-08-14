@@ -52,6 +52,11 @@ export const IPC = {
   copilotToolRequest: 'copilotTool:request',
   /** renderer -> main: the copilot turn executor's answer. */
   copilotToolRespond: 'copilotTool:respond',
+  /** renderer -> main: run one subscription copilot turn through the Claude Code CLI. */
+  copilotCliTurn: 'copilotCli:turn',
+  copilotCliCancel: 'copilotCli:cancel',
+  /** main -> renderer push: streaming text delta for the running CLI turn. */
+  copilotCliDelta: 'copilotCli:delta',
   /** main -> renderer push: full library snapshot after any change */
   libraryChanged: 'library:changed',
   /** main -> renderer push: Edit menu command ('undo' | 'redo') */

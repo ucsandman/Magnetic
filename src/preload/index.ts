@@ -62,6 +62,13 @@ const api: MagneticApi = {
   },
   copilotToolRespond: (id, ok, content) =>
     ipcRenderer.invoke(IPC.copilotToolRespond, { id, ok, content }),
+  copilotCliTurn: (args) => ipcRenderer.invoke(IPC.copilotCliTurn, args),
+  copilotCliCancel: (turnId) => ipcRenderer.invoke(IPC.copilotCliCancel, { turnId }),
+  onCopilotCliDelta: (cb) => {
+    const listener = (_event: unknown, delta: { turnId: string; text: string }): void => cb(delta)
+    ipcRenderer.on(IPC.copilotCliDelta, listener)
+    return () => ipcRenderer.removeListener(IPC.copilotCliDelta, listener)
+  },
   relinkAsset: (assetId) => ipcRenderer.invoke(IPC.relinkAsset, { assetId }),
   onLibraryChanged: (cb) => {
     const listener = (_event: unknown, snapshot: LibrarySnapshot): void => cb(snapshot)

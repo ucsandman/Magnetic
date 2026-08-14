@@ -96,6 +96,15 @@ export interface IpcDeps {
   copilotCliStatus(): Promise<{ found: boolean; version: string | null }>
   agentRespond(id: string, result: unknown): void
   copilotToolRespond(id: string, ok: boolean, content: unknown): void
+  copilotCliTurn(args: {
+    turnId: string
+    prompt: string
+    resumeSessionId: string | null
+    tools: { name: string; description: string; inputSchema: unknown }[]
+  }): Promise<
+    { ok: true; reply: string; sessionId: string | null } | { ok: false; message: string }
+  >
+  copilotCliCancel(turnId: string): void
   relink(assetId: string): Promise<void>
   relinkPath(assetId: string, path: string): Promise<void>
 }
@@ -186,6 +195,22 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
       deps.copilotToolRespond(payload.id, payload.ok, payload.content)
     }
   )
+
+  handleValidated(
+    IPC.copilotCliTurn,
+    z.object({
+      turnId: z.string().min(1),
+      prompt: z.string().min(1),
+      resumeSessionId: z.string().nullable(),
+      tools: z.array(
+        z.object({ name: z.string(), description: z.string(), inputSchema: z.unknown() })
+      )
+    }),
+    async (payload) => deps.copilotCliTurn(payload)
+  )
+  handleValidated(IPC.copilotCliCancel, z.object({ turnId: z.string() }), async (payload) => {
+    deps.copilotCliCancel(payload.turnId)
+  })
 
   handleValidated(IPC.mediaEnsureProxy, assetIdPayloadSchema, (payload) =>
     deps.ensureProxy(payload.assetId)

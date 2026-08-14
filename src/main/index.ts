@@ -11,6 +11,7 @@ import { registerCaptionsIpc } from './captions'
 import { registerMfileScheme, installMfileHandler } from './protocol'
 import { resolveClaudeCli } from './copilot-cli'
 import { resolveCopilotToolRequest } from './copilot-bridge'
+import { runCopilotCliTurn, cancelCopilotCliTurn } from './copilot-turn'
 import {
   assetLoudness,
   buildSnapshot,
@@ -155,7 +156,9 @@ app.whenReady().then(async () => {
     },
     relink: (assetId) => relinkViaDialog(assetId),
     relinkPath: (assetId, path) => relinkAsset(assetId, path),
-    copilotToolRespond: (id, ok, content) => resolveCopilotToolRequest(id, ok, content)
+    copilotToolRespond: (id, ok, content) => resolveCopilotToolRequest(id, ok, content),
+    copilotCliTurn: (args) => runCopilotCliTurn(args),
+    copilotCliCancel: (turnId) => cancelCopilotCliTurn(turnId)
   })
   // Flush any debounced library/project writes before the process exits.
   app.on('before-quit', () => getStore().saveNow())

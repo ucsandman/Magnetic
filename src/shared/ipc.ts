@@ -311,6 +311,16 @@ export interface MagneticApi {
   onCopilotToolRequest(cb: (request: { id: string; tool: string; input: unknown }) => void): () => void
   /** The turn executor's answer for a pushed copilot tool request. */
   copilotToolRespond(id: string, ok: boolean, content: unknown): Promise<void>
+  copilotCliTurn(args: {
+    turnId: string
+    prompt: string
+    resumeSessionId: string | null
+    tools: { name: string; description: string; inputSchema: unknown }[]
+  }): Promise<
+    { ok: true; reply: string; sessionId: string | null } | { ok: false; message: string }
+  >
+  copilotCliCancel(turnId: string): Promise<void>
+  onCopilotCliDelta(cb: (delta: { turnId: string; text: string }) => void): () => void
   /** Relink a missing asset via the OS file picker (duration must match). */
   relinkAsset(assetId: string): Promise<void>
   onLibraryChanged(cb: (snapshot: import('./types').LibrarySnapshot) => void): () => void
