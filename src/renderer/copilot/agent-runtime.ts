@@ -325,38 +325,48 @@ export async function streamSubscriptionTurn(
 
   const offTool = window.api.onCopilotToolRequest((call) => {
     void (async () => {
-      if (call.tool === READ_TIMELINE_TOOL.name) {
-        await window.api.copilotToolRespond(call.id, true, request.contextOf(scratch))
-        return
-      }
-      if (call.tool === CHECK_FLOW_TOOL.name && request.flowOf !== undefined) {
-        await window.api.copilotToolRespond(call.id, true, request.flowOf(scratch))
-        return
-      }
-      if (call.tool === VIEW_FILMSTRIP_TOOL.name && request.filmstripOf !== undefined) {
-        const clipId = (call.input as { clip_id?: unknown })?.clip_id
-        const strip = typeof clipId === 'string' ? await request.filmstripOf(clipId) : null
-        if (strip === null) {
-          await window.api.copilotToolRespond(
-            call.id,
-            false,
-            'no filmstrip available for that clip id'
-          )
-        } else {
-          await window.api.copilotToolRespond(call.id, true, {
-            __image: { data: strip.data, mimeType: strip.mediaType },
-            note: strip.note
-          })
+      try {
+        if (call.tool === READ_TIMELINE_TOOL.name) {
+          await window.api.copilotToolRespond(call.id, true, request.contextOf(scratch))
+          return
         }
-        return
+        if (call.tool === CHECK_FLOW_TOOL.name && request.flowOf !== undefined) {
+          await window.api.copilotToolRespond(call.id, true, request.flowOf(scratch))
+          return
+        }
+        if (call.tool === VIEW_FILMSTRIP_TOOL.name && request.filmstripOf !== undefined) {
+          const clipId = (call.input as { clip_id?: unknown })?.clip_id
+          const strip = typeof clipId === 'string' ? await request.filmstripOf(clipId) : null
+          if (strip === null) {
+            await window.api.copilotToolRespond(
+              call.id,
+              false,
+              'no filmstrip available for that clip id'
+            )
+          } else {
+            await window.api.copilotToolRespond(call.id, true, {
+              __image: { data: strip.data, mimeType: strip.mediaType },
+              note: strip.note
+            })
+          }
+          return
+        }
+        const outcome = executeEditTool(scratch, call.tool, call.input)
+        scratch = outcome.next
+        if (outcome.summary !== null) {
+          ops.push({ name: call.tool, input: call.input, summary: outcome.summary })
+        }
+        if (outcome.timeRefFlicks !== null) request.onToolTime?.(outcome.timeRefFlicks)
+        await window.api.copilotToolRespond(call.id, outcome.ok, outcome.resultText)
+      } catch (error) {
+        // A typed error keeps the CLI moving instead of a 30s tool-server
+        // timeout plus an unhandled rejection here.
+        await window.api.copilotToolRespond(
+          call.id,
+          false,
+          error instanceof Error ? error.message : String(error)
+        )
       }
-      const outcome = executeEditTool(scratch, call.tool, call.input)
-      scratch = outcome.next
-      if (outcome.summary !== null) {
-        ops.push({ name: call.tool, input: call.input, summary: outcome.summary })
-      }
-      if (outcome.timeRefFlicks !== null) request.onToolTime?.(outcome.timeRefFlicks)
-      await window.api.copilotToolRespond(call.id, outcome.ok, outcome.resultText)
     })()
   })
   const offDelta = window.api.onCopilotCliDelta((delta) => {

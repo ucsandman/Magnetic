@@ -9,7 +9,7 @@ import { registerSmartExportIpc } from './export/smart-render'
 import { registerMarketingHandoffIpc } from './export/marketing-handoff'
 import { registerCaptionsIpc } from './captions'
 import { registerMfileScheme, installMfileHandler } from './protocol'
-import { resolveClaudeCli } from './copilot-cli'
+import { resetCliCache, resolveClaudeCli } from './copilot-cli'
 import { resolveCopilotToolRequest } from './copilot-bridge'
 import { runCopilotCliTurn, cancelCopilotCliTurn } from './copilot-turn'
 import {
@@ -155,6 +155,9 @@ app.whenReady().then(async () => {
       return picked.canceled || picked.filePaths.length === 0 ? null : picked.filePaths[0]
     },
     copilotCliStatus: async () => {
+      // Always re-probe PATH so "Check again" reflects an install/uninstall
+      // or upgrade since the last check, instead of replaying the cache.
+      resetCliCache()
       const status = await resolveClaudeCli()
       return { found: status.found, version: status.version }
     },

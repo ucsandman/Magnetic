@@ -31,6 +31,14 @@ export function childEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return next
 }
 
+/**
+ * The panel promises the copilot only touches the timeline through the
+ * magnetic MCP tools — clamp off the CLI's own built-in tool surface so a
+ * model turn can't shell out, read/write the user's disk, or fetch the web.
+ */
+const DISALLOWED_CLI_TOOLS =
+  'Bash,Read,Write,Edit,MultiEdit,NotebookEdit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite'
+
 export function buildCliArgs(options: {
   mcpConfigPath: string
   resumeSessionId: string | null
@@ -46,6 +54,8 @@ export function buildCliArgs(options: {
     options.mcpConfigPath,
     '--allowedTools',
     'mcp__magnetic__*',
+    '--disallowedTools',
+    DISALLOWED_CLI_TOOLS,
     '--max-turns',
     '12'
   ]
@@ -104,9 +114,13 @@ export function cliErrorMessage(exitCode: number | null, stderrTail: string): st
 
 let cachedStatus: CliStatus | null = null
 
-export function resetCliCacheForTests(): void {
+/** Drops the memoized CLI status so the next resolveClaudeCli() re-probes PATH. */
+export function resetCliCache(): void {
   cachedStatus = null
 }
+
+/** Alias kept for existing test call sites. */
+export const resetCliCacheForTests = resetCliCache
 
 /** True for Windows shell shims that need cmd.exe to execute. */
 function needsCmdShell(path: string): boolean {
@@ -117,12 +131,13 @@ function needsCmdShell(path: string): boolean {
 export function spawnCli(
   path: string,
   args: string[],
-  env: NodeJS.ProcessEnv
+  env: NodeJS.ProcessEnv,
+  cwd?: string
 ): ReturnType<typeof spawn> {
   if (needsCmdShell(path)) {
-    return spawn('cmd.exe', ['/d', '/s', '/c', path, ...args], { env })
+    return spawn('cmd.exe', ['/d', '/s', '/c', path, ...args], { env, cwd })
   }
-  return spawn(path, args, { env })
+  return spawn(path, args, { env, cwd })
 }
 
 function capture(path: string, args: string[]): Promise<{ code: number | null; stdout: string }> {

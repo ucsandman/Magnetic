@@ -76,6 +76,8 @@ describe('buildCliArgs', () => {
       'C:\\t\\m.json',
       '--allowedTools',
       'mcp__magnetic__*',
+      '--disallowedTools',
+      'Bash,Read,Write,Edit,MultiEdit,NotebookEdit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite',
       '--max-turns',
       '12'
     ])
