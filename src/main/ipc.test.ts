@@ -37,6 +37,7 @@ const deps: IpcDeps = {
   agentFolderPickDialog: async () => null,
   copilotCliStatus: async () => ({ found: false, version: null }),
   agentRespond: () => {},
+  copilotToolRespond: () => {},
   relink: async () => {},
   relinkPath: async () => {}
 }

@@ -9,7 +9,10 @@
  */
 
 import { spawn } from 'child_process'
+import { randomUUID } from 'crypto'
 import { existsSync } from 'fs'
+import { createServer, type Server } from 'http'
+import type { Socket } from 'net'
 
 export interface CliStatus {
   found: boolean
@@ -159,4 +162,89 @@ export async function resolveClaudeCli(): Promise<CliStatus> {
   const version = stdout.trim().split(/\s+/)[0] ?? null
   cachedStatus = { found: true, version: version === '' ? null : version, path }
   return cachedStatus
+}
+
+export interface CopilotToolDef {
+  name: string
+  description: string
+  inputSchema: unknown
+}
+
+export type ToolReply = { ok: boolean; content: unknown }
+
+let toolServer: Server | null = null
+let toolServerPort = 0
+let toolServerToken = ''
+const toolServerSockets = new Set<Socket>()
+let turnTools: CopilotToolDef[] = []
+
+export function setTurnTools(tools: CopilotToolDef[]): void {
+  turnTools = tools
+}
+
+/**
+ * Loopback HTTP tool server for one copilot session (structural clone of
+ * agent-sidecar.ts). Unlike the sidecar, the token/port never touch disk —
+ * they travel to the CLI's stream-json shim via the per-turn MCP config env
+ * — and __list_tools answers from setTurnTools instead of forwarding.
+ */
+export async function ensureCopilotToolServer(
+  forward: (tool: string, input: unknown) => Promise<ToolReply>
+): Promise<{ port: number; token: string }> {
+  if (toolServer !== null) return { port: toolServerPort, token: toolServerToken }
+  toolServerToken = randomUUID()
+  const server = createServer((req, res) => {
+    res.setHeader('content-type', 'application/json')
+    if (req.headers.authorization !== `Bearer ${toolServerToken}`) {
+      res.writeHead(401).end(JSON.stringify({ error: 'bad token' }))
+      return
+    }
+    if (req.method !== 'POST' || req.url !== '/tool') {
+      res.writeHead(404).end(JSON.stringify({ error: 'unknown route' }))
+      return
+    }
+    let body = ''
+    req.on('data', (chunk: Buffer) => {
+      body += chunk.toString('utf8')
+      if (body.length > 1_000_000) req.destroy()
+    })
+    req.on('end', () => {
+      void (async () => {
+        try {
+          const payload = JSON.parse(body) as { tool?: unknown; input?: unknown }
+          if (typeof payload.tool !== 'string') throw new Error('missing tool name')
+          if (payload.tool === '__list_tools') {
+            res.writeHead(200).end(JSON.stringify({ result: { tools: turnTools } }))
+            return
+          }
+          const reply = await forward(payload.tool, payload.input)
+          if (reply.ok) res.writeHead(200).end(JSON.stringify({ result: reply.content }))
+          else res.writeHead(400).end(JSON.stringify({ error: String(reply.content) }))
+        } catch (error) {
+          res.writeHead(400).end(
+            JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+          )
+        }
+      })()
+    })
+  })
+  server.on('connection', (socket) => {
+    toolServerSockets.add(socket)
+    socket.on('close', () => toolServerSockets.delete(socket))
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  toolServer = server
+  const address = server.address()
+  toolServerPort = typeof address === 'object' && address !== null ? address.port : 0
+  return { port: toolServerPort, token: toolServerToken }
+}
+
+export async function stopCopilotToolServer(): Promise<void> {
+  if (toolServer === null) return
+  const closing = toolServer
+  toolServer = null
+  turnTools = []
+  for (const socket of toolServerSockets) socket.destroy()
+  toolServerSockets.clear()
+  await new Promise<void>((resolve) => closing.close(() => resolve()))
 }

@@ -48,6 +48,10 @@ export const IPC = {
   agentFolderPickDialog: 'agent:folderPickDialog',
   /** renderer -> main: is Claude Code installed, which version. */
   copilotCliStatus: 'copilotCli:status',
+  /** main -> renderer push: one copilot tool call to run against the turn scratch. */
+  copilotToolRequest: 'copilotTool:request',
+  /** renderer -> main: the copilot turn executor's answer. */
+  copilotToolRespond: 'copilotTool:respond',
   /** main -> renderer push: full library snapshot after any change */
   libraryChanged: 'library:changed',
   /** main -> renderer push: Edit menu command ('undo' | 'redo') */

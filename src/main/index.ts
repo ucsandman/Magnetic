@@ -10,6 +10,7 @@ import { registerMarketingHandoffIpc } from './export/marketing-handoff'
 import { registerCaptionsIpc } from './captions'
 import { registerMfileScheme, installMfileHandler } from './protocol'
 import { resolveClaudeCli } from './copilot-cli'
+import { resolveCopilotToolRequest } from './copilot-bridge'
 import {
   assetLoudness,
   buildSnapshot,
@@ -153,7 +154,8 @@ app.whenReady().then(async () => {
       return { found: status.found, version: status.version }
     },
     relink: (assetId) => relinkViaDialog(assetId),
-    relinkPath: (assetId, path) => relinkAsset(assetId, path)
+    relinkPath: (assetId, path) => relinkAsset(assetId, path),
+    copilotToolRespond: (id, ok, content) => resolveCopilotToolRequest(id, ok, content)
   })
   // Flush any debounced library/project writes before the process exits.
   app.on('before-quit', () => getStore().saveNow())

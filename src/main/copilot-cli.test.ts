@@ -6,9 +6,12 @@ import {
   buildCliArgs,
   childEnv,
   cliErrorMessage,
+  ensureCopilotToolServer,
   parseStreamLine,
   resetCliCacheForTests,
-  resolveClaudeCli
+  resolveClaudeCli,
+  setTurnTools,
+  stopCopilotToolServer
 } from './copilot-cli'
 
 // Shapes captured from the 2026-08-14 spike run (claude 2.1.232); ids
@@ -120,5 +123,46 @@ describe('resolveClaudeCli', () => {
     process.env.MAGNETIC_CLAUDE_BIN = join(tmpdir(), 'no-such-claude.exe')
     const status = await resolveClaudeCli()
     expect(status).toEqual({ found: false, version: null, path: null })
+  })
+})
+
+describe('copilot tool server', () => {
+  afterEach(async () => {
+    await stopCopilotToolServer()
+  })
+
+  it('serves __list_tools from turn state and forwards other calls', async () => {
+    const calls: { tool: string; input: unknown }[] = []
+    const { port, token } = await ensureCopilotToolServer(async (tool, input) => {
+      calls.push({ tool, input })
+      return tool === 'boom' ? { ok: false, content: 'typed error' } : { ok: true, content: 'done' }
+    })
+    setTurnTools([{ name: 'blade', description: 'cut', inputSchema: { type: 'object' } }])
+
+    const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' }
+    const list = await fetch(`http://127.0.0.1:${port}/tool`, {
+      method: 'POST', headers, body: JSON.stringify({ tool: '__list_tools', input: {} })
+    })
+    expect((await list.json()).result.tools[0].name).toBe('blade')
+
+    const good = await fetch(`http://127.0.0.1:${port}/tool`, {
+      method: 'POST', headers, body: JSON.stringify({ tool: 'blade', input: { at: 1 } })
+    })
+    expect(good.status).toBe(200)
+    expect((await good.json()).result).toBe('done')
+    expect(calls).toEqual([{ tool: 'blade', input: { at: 1 } }])
+
+    const bad = await fetch(`http://127.0.0.1:${port}/tool`, {
+      method: 'POST', headers, body: JSON.stringify({ tool: 'boom', input: {} })
+    })
+    expect(bad.status).toBe(400)
+    expect((await bad.json()).error).toBe('typed error')
+
+    const unauthorized = await fetch(`http://127.0.0.1:${port}/tool`, {
+      method: 'POST',
+      headers: { ...headers, authorization: 'Bearer wrong-token-words' },
+      body: JSON.stringify({ tool: 'blade', input: {} })
+    })
+    expect(unauthorized.status).toBe(401)
   })
 })
