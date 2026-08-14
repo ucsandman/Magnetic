@@ -2,7 +2,7 @@ node_modules/
 dist/
 out/
 resources/bin/
-fixtures/
+/fixtures/
 playwright-report/
 test-results/
 coverage/
