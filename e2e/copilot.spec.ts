@@ -10,7 +10,12 @@ const FFMPEG = join(ROOT, 'resources', 'bin', 'ffmpeg.exe')
 function launchApp(libraryPath: string): Promise<ElectronApplication> {
   return electron.launch({
     args: [join(ROOT, 'out', 'main', 'index.js')],
-    env: { ...process.env, MAGNETIC_TEST: '1', MAGNETIC_LIBRARY_PATH: libraryPath }
+    env: {
+      ...process.env,
+      MAGNETIC_TEST: '1',
+      MAGNETIC_LIBRARY_PATH: libraryPath,
+      MAGNETIC_CLAUDE_BIN: 'C:\\nonexistent\\claude.exe'
+    }
   })
 }
 

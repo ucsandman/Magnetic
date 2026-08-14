@@ -289,6 +289,7 @@ export interface MagneticApi {
     agentAccess: boolean
     agentToken: string | null
     agentMediaFolders: string[]
+    copilotProvider: 'subscription' | 'apiKey' | null
   }>
   setSettings(settings: {
     autoTranscribe?: boolean
@@ -296,6 +297,7 @@ export interface MagneticApi {
     agentAccess?: boolean
     agentToken?: string
     agentMediaFolders?: string[]
+    copilotProvider?: 'subscription' | 'apiKey'
   }): Promise<void>
   /** Is the agent sidecar running, on which loopback port, with which token. */
   agentStatus(): Promise<{ running: boolean; port: number | null; token: string | null }>

@@ -83,6 +83,7 @@ export interface IpcDeps {
     agentAccess: boolean
     agentToken: string | null
     agentMediaFolders: string[]
+    copilotProvider: 'subscription' | 'apiKey' | null
   }
   setSettings(settings: {
     autoTranscribe?: boolean
@@ -90,6 +91,7 @@ export interface IpcDeps {
     agentAccess?: boolean
     agentToken?: string
     agentMediaFolders?: string[]
+    copilotProvider?: 'subscription' | 'apiKey'
   }): void
   agentStatus(): { running: boolean; port: number | null; token: string | null }
   agentFolderPickDialog(): Promise<string | null>
@@ -164,7 +166,8 @@ export function registerIpc(deps: IpcDeps, env: NodeJS.ProcessEnv = process.env)
         anthropicApiKey: z.string().nullable().optional(),
         agentAccess: z.boolean().optional(),
         agentToken: z.string().min(8).optional(),
-        agentMediaFolders: z.array(z.string()).optional()
+        agentMediaFolders: z.array(z.string()).optional(),
+        copilotProvider: z.enum(['subscription', 'apiKey']).optional()
       })
       .refine((payload) => Object.keys(payload).length > 0, 'empty settings payload'),
     async (payload) => {

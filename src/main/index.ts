@@ -40,11 +40,13 @@ import {
   getAgentToken,
   getAnthropicApiKey,
   getAutoTranscribe,
+  getCopilotProvider,
   setAgentAccess,
   setAgentMediaFolders,
   setAgentToken,
   setAnthropicApiKey,
-  setAutoTranscribe
+  setAutoTranscribe,
+  setCopilotProvider
 } from './project-io/library'
 
 // E2E launches must not share localStorage/caches with each other or with the
@@ -117,13 +119,15 @@ app.whenReady().then(async () => {
       anthropicApiKey: getAnthropicApiKey(),
       agentAccess: getAgentAccess(),
       agentToken: getAgentToken(),
-      agentMediaFolders: getAgentMediaFolders()
+      agentMediaFolders: getAgentMediaFolders(),
+      copilotProvider: getCopilotProvider()
     }),
     setSettings: (settings) => {
       if (settings.autoTranscribe !== undefined) setAutoTranscribe(settings.autoTranscribe)
       if (settings.anthropicApiKey !== undefined) setAnthropicApiKey(settings.anthropicApiKey)
       if (settings.agentToken !== undefined) setAgentToken(settings.agentToken)
       if (settings.agentMediaFolders !== undefined) setAgentMediaFolders(settings.agentMediaFolders)
+      if (settings.copilotProvider !== undefined) setCopilotProvider(settings.copilotProvider)
       if (settings.agentAccess !== undefined) {
         setAgentAccess(settings.agentAccess)
         if (settings.agentAccess) {

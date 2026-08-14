@@ -39,7 +39,8 @@ function launchApp(libraryPath: string, agent: boolean): Promise<ElectronApplica
       ...process.env,
       MAGNETIC_TEST: '1',
       ...(agent ? { MAGNETIC_AGENT: '1', MAGNETIC_AGENT_TOKEN: TOKEN } : {}),
-      MAGNETIC_LIBRARY_PATH: libraryPath
+      MAGNETIC_LIBRARY_PATH: libraryPath,
+      MAGNETIC_CLAUDE_BIN: 'C:\\nonexistent\\claude.exe'
     }
   })
 }

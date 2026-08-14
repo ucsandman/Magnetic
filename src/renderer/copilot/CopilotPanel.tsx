@@ -6,7 +6,12 @@ import { useTimelineStore } from '../state/timeline-store'
 import { useAssetEnvelopes } from '../silence/use-envelopes'
 import { ensureTranscripts } from '../transcript/cache'
 import { ABReview } from './ABReview'
-import { advisorErrorMessage, streamCopilotTurn, type AdvisorTurn } from './agent-runtime'
+import {
+  advisorErrorMessage,
+  streamCopilotTurn,
+  streamSubscriptionTurn,
+  type AdvisorTurn
+} from './agent-runtime'
 import { buildCopilotContext } from './context'
 import { dependencyGroups } from './dependency'
 import { scoreFlow } from './flow-score'
@@ -23,18 +28,23 @@ interface CopilotChat {
   /** Streaming assistant text, null when idle. */
   streaming: string | null
   error: string | null
+  /** Claude Code CLI session to resume, when talking through the subscription provider. */
+  cliSessionId: string | null
   setTurns(turns: AdvisorTurn[]): void
   setStreaming(text: string | null): void
   setError(error: string | null): void
+  setCliSessionId(id: string | null): void
 }
 
 const useCopilotChat = create<CopilotChat>((set) => ({
   turns: [],
   streaming: null,
   error: null,
+  cliSessionId: null,
   setTurns: (turns) => set({ turns }),
   setStreaming: (streaming) => set({ streaming }),
-  setError: (error) => set({ error })
+  setError: (error) => set({ error }),
+  setCliSessionId: (cliSessionId) => set({ cliSessionId })
 }))
 
 export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
@@ -47,6 +57,13 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
   const [keyLoaded, setKeyLoaded] = useState(false)
   const [keyDraft, setKeyDraft] = useState('')
   const [editingKey, setEditingKey] = useState(false)
+  const [cliStatus, setCliStatus] = useState<{ found: boolean; version: string | null } | null>(
+    null
+  )
+  const [providerSetting, setProviderSetting] = useState<'subscription' | 'apiKey' | null>(null)
+  const checkCli = (): void => {
+    void window.api.copilotCliStatus().then(setCliStatus)
+  }
   const [question, setQuestion] = useState('')
   const [visionEnabled, setVisionEnabled] = useState(false)
   const [transcripts, setTranscripts] = useState<Map<string, Transcript>>(new Map())
@@ -58,8 +75,13 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
     void window.api.getSettings().then((settings) => {
       setApiKey(settings.anthropicApiKey)
       setKeyLoaded(true)
+      setProviderSetting(settings.copilotProvider)
     })
+    checkCli()
   }, [])
+
+  const provider: 'subscription' | 'apiKey' =
+    providerSetting ?? (cliStatus?.found === true ? 'subscription' : 'apiKey')
 
   useEffect(() => {
     if (sequence === null || snapshot === null) return
@@ -158,7 +180,9 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
   const send = (): void => {
     const chat = useCopilotChat.getState()
     const text = question.trim()
-    if (text === '' || chat.streaming !== null || sequence === null || apiKey === null) return
+    if (text === '' || chat.streaming !== null || sequence === null) return
+    if (provider === 'apiKey' && apiKey === null) return
+    if (provider === 'subscription' && cliStatus?.found !== true) return
     const store = useTimelineStore.getState()
     // a new instruction supersedes any unreviewed batch from the last turn
     if (store.pendingProposal !== null && store.pendingProposal.ranges === null) {
@@ -204,23 +228,33 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
         note: `Filmstrip of ${asset.fileName}: ${asset.filmstrip.frameCount} frames left to right, one every ${(asset.filmstrip.intervalFlicks / 705_600_000).toFixed(1)}s of SOURCE media (the clip shows media from ${(clip.mediaInFlicks / 705_600_000).toFixed(1)}s to ${((clip.mediaInFlicks + clip.durationFlicks) / 705_600_000).toFixed(1)}s).`
       }
     }
-    void streamCopilotTurn({
-      apiKey,
+    const shared = {
       context: contextOf(sequence),
-      turns: nextTurns,
       base: sequence,
       contextOf,
       flowOf,
       filmstripOf: visionEnabled ? filmstripOf : undefined,
       signal: controller.signal,
-      onDelta: (delta) => {
+      onDelta: (delta: string) => {
         const current = useCopilotChat.getState()
         current.setStreaming((current.streaming ?? '') + delta)
       },
-      onToolTime: (flicks) => {
+      onToolTime: (flicks: number) => {
         useTimelineStore.getState().setAgentPlayhead(flicks)
       }
-    })
+    }
+    const turnPromise =
+      provider === 'subscription'
+        ? streamSubscriptionTurn({
+            ...shared,
+            question: text,
+            resumeSessionId: useCopilotChat.getState().cliSessionId
+          }).then((result) => {
+            useCopilotChat.getState().setCliSessionId(result.sessionId)
+            return result
+          })
+        : streamCopilotTurn({ ...shared, apiKey: apiKey as string, turns: nextTurns })
+    void turnPromise
       .then((result) => {
         const current = useCopilotChat.getState()
         current.setTurns([...current.turns, { role: 'assistant', text: result.reply }])
@@ -238,7 +272,8 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
       })
   }
 
-  const needsKey = keyLoaded && (apiKey === null || editingKey)
+  const needsKey = provider === 'apiKey' && keyLoaded && (apiKey === null || editingKey)
+  const needsCli = provider === 'subscription' && cliStatus !== null && !cliStatus.found
 
   return (
     <div
@@ -256,6 +291,53 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
         The copilot sees your timeline, dead air, and transcript. Its edits are proposals: they
         preview as a ghost diff and apply only when you Accept — never directly.
       </div>
+      <div className="copilot-provider" data-testid="copilot-provider">
+        <label>
+          <input
+            type="radio"
+            name="copilot-provider"
+            data-testid="provider-subscription"
+            checked={provider === 'subscription'}
+            onChange={() => {
+              setProviderSetting('subscription')
+              void window.api.setSettings({ copilotProvider: 'subscription' })
+            }}
+          />
+          <span>
+            Claude subscription{' '}
+            {cliStatus === null
+              ? '(checking…)'
+              : cliStatus.found
+                ? `— Claude Code ${cliStatus.version ?? ''} found`
+                : '— Claude Code not found'}
+          </span>
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="copilot-provider"
+            data-testid="provider-apikey"
+            checked={provider === 'apiKey'}
+            onChange={() => {
+              setProviderSetting('apiKey')
+              void window.api.setSettings({ copilotProvider: 'apiKey' })
+            }}
+          />
+          <span>API key</span>
+        </label>
+      </div>
+      {needsCli && (
+        <div className="copilot-setup" data-testid="copilot-cli-missing">
+          <p>
+            The subscription provider uses Claude Code, signed in with your Claude plan. Install it
+            from claude.com/code, run it once to sign in, then check again — or switch to the API
+            key provider above.
+          </p>
+          <button type="button" data-testid="copilot-cli-recheck" onClick={checkCli}>
+            Check again
+          </button>
+        </div>
+      )}
       {needsKey && (
         <div className="copilot-setup" data-testid="copilot-setup">
           <p>
@@ -290,7 +372,7 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
           </div>
         </div>
       )}
-      {!needsKey && keyLoaded && (
+      {!needsKey && !needsCli && keyLoaded && (
         <>
           <div className="copilot-log" data-testid="copilot-log" ref={logRef}>
             {turns.length === 0 && streaming === null && (
@@ -426,14 +508,16 @@ export function CopilotPanel({ onClose }: { onClose(): void }): ReactNode {
                 Stop
               </button>
             )}
-            <button
-              type="button"
-              data-testid="copilot-key-edit"
-              title="Change the stored API key"
-              onClick={() => setEditingKey(true)}
-            >
-              Key…
-            </button>
+            {provider === 'apiKey' && (
+              <button
+                type="button"
+                data-testid="copilot-key-edit"
+                title="Change the stored API key"
+                onClick={() => setEditingKey(true)}
+              >
+                Key…
+              </button>
+            )}
             <label
               className="copilot-vision-toggle"
               title="Let the copilot look at clip filmstrips (frame thumbnails) for visually ambiguous asks — sends those images to the API. Off by default."

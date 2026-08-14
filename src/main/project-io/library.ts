@@ -24,6 +24,8 @@ interface SettingsJson {
   agentToken?: string
   /** Directories agents may read media from. Empty (default) = reject everything. */
   agentMediaFolders?: string[]
+  /** Copilot transport: 'subscription' (Claude Code CLI) or 'apiKey' (Anthropic API). Unset = auto. */
+  copilotProvider?: 'subscription' | 'apiKey'
 }
 
 export function getAutoTranscribe(): boolean {
@@ -43,6 +45,15 @@ export function setAnthropicApiKey(key: string | null): void {
   if (key === null || key === '') delete settings.anthropicApiKey
   else settings.anthropicApiKey = key
   writeSettings(settings)
+}
+
+export function getCopilotProvider(): 'subscription' | 'apiKey' | null {
+  const value = readSettings().copilotProvider
+  return value === 'subscription' || value === 'apiKey' ? value : null
+}
+
+export function setCopilotProvider(provider: 'subscription' | 'apiKey'): void {
+  writeSettings({ ...readSettings(), copilotProvider: provider })
 }
 
 export function getAgentAccess(): boolean {

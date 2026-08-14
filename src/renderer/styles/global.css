@@ -1451,6 +1451,14 @@ select,
   color: var(--color-text);
 }
 
+.copilot-provider {
+  display: flex;
+  gap: 12px;
+  padding: 6px 10px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
 .copilot-log {
   flex: 1;
   min-height: 0;

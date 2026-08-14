@@ -30,7 +30,8 @@ const deps: IpcDeps = {
     anthropicApiKey: null,
     agentAccess: false,
     agentToken: null,
-    agentMediaFolders: []
+    agentMediaFolders: [],
+    copilotProvider: null
   }),
   setSettings: () => {},
   agentStatus: () => ({ running: false, port: null, token: null }),
@@ -98,6 +99,28 @@ describe('copilot CLI channels reject targeted malformed payloads', () => {
       handlerFor(IPC.copilotCliStatus)({}, 'x'),
       `channel ${IPC.copilotCliStatus} accepted garbage`
     ).rejects.toThrow(/Invalid payload/)
+  })
+})
+
+describe('settingsSet copilotProvider validation', () => {
+  it('rejects a bogus provider and accepts a valid one', async () => {
+    registerIpc(deps, { MAGNETIC_TEST: '1' })
+    const handlers = vi.mocked(ipcMain.handle).mock.calls as unknown as [
+      string,
+      (event: unknown, payload: unknown) => Promise<unknown>
+    ][]
+    const handlerFor = (channel: string): ((event: unknown, payload: unknown) => Promise<unknown>) => {
+      const found = handlers.find(([registered]) => registered === channel)
+      if (found === undefined) throw new Error(`no handler registered for ${channel}`)
+      return found[1]
+    }
+    await expect(
+      handlerFor(IPC.settingsSet)({}, { copilotProvider: 'bogus' }),
+      `channel ${IPC.settingsSet} accepted a bogus provider`
+    ).rejects.toThrow(/Invalid payload/)
+    await expect(
+      handlerFor(IPC.settingsSet)({}, { copilotProvider: 'subscription' })
+    ).resolves.toBeUndefined()
   })
 })
 
