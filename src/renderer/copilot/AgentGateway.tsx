@@ -129,7 +129,11 @@ async function handleAgentTool(
       for (const op of ops) {
         if (typeof op.name !== 'string') return { error: 'every op needs a string name' }
       }
-      const batch = executeEditBatch(base, ops as { name: string; input: unknown }[], snapshot.assets)
+      const batch = executeEditBatch(
+        base,
+        ops as { name: string; input: unknown }[],
+        snapshot.assets
+      )
       if (!batch.ok) return { error: batch.error }
       return presentProposal(base, batch.next, batch.executed, batch.results, lastOutcome)
     }

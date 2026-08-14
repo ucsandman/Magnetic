@@ -133,7 +133,12 @@ describe('executeEditTool', () => {
   })
 
   it('insert_clip at an index ripples the rest of the spine later', () => {
-    const outcome = executeEditTool(base, 'insert_clip', { asset_id: 'asset-x', at_index: 1 }, assets)
+    const outcome = executeEditTool(
+      base,
+      'insert_clip',
+      { asset_id: 'asset-x', at_index: 1 },
+      assets
+    )
     expect(outcome.ok).toBe(true)
     expect(outcome.next.spine).toHaveLength(3)
     expect(outcome.next.spine[0].id).toBe('a')
@@ -148,7 +153,12 @@ describe('executeEditTool', () => {
   })
 
   it('connect_clip attaches a connected clip at the requested time, lane 1 by default', () => {
-    const outcome = executeEditTool(base, 'connect_clip', { asset_id: 'asset-x', at_sec: 2 }, assets)
+    const outcome = executeEditTool(
+      base,
+      'connect_clip',
+      { asset_id: 'asset-x', at_sec: 2 },
+      assets
+    )
     expect(outcome.ok).toBe(true)
     expect(outcome.next.connected).toHaveLength(1)
     const cc = outcome.next.connected[0]

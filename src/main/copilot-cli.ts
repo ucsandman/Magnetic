@@ -236,9 +236,9 @@ export async function ensureCopilotToolServer(
           if (reply.ok) res.writeHead(200).end(JSON.stringify({ result: reply.content }))
           else res.writeHead(400).end(JSON.stringify({ error: String(reply.content) }))
         } catch (error) {
-          res.writeHead(400).end(
-            JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-          )
+          res
+            .writeHead(400)
+            .end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
         }
       })()
     })

@@ -198,9 +198,7 @@ rl.on('line', (line) => {
     if (process.env.MAGNETIC_MCP_ROLE === 'copilot') {
       void callSidecar('__list_tools', {})
         .then((result) => reply(id, { tools: result.tools }))
-        .catch((error) =>
-          replyError(id, error instanceof Error ? error.message : String(error))
-        )
+        .catch((error) => replyError(id, error instanceof Error ? error.message : String(error)))
       return
     }
     reply(id, { tools: TOOLS })

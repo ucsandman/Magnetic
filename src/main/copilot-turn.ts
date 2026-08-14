@@ -5,8 +5,15 @@ import { join } from 'path'
 import { createInterface } from 'readline'
 import { IPC } from '../shared/channels'
 import {
-  buildCliArgs, childEnv, cliErrorMessage, ensureCopilotToolServer,
-  parseStreamLine, resolveClaudeCli, setTurnTools, spawnCli, stopCopilotToolServer,
+  buildCliArgs,
+  childEnv,
+  cliErrorMessage,
+  ensureCopilotToolServer,
+  parseStreamLine,
+  resolveClaudeCli,
+  setTurnTools,
+  spawnCli,
+  stopCopilotToolServer,
   type CopilotToolDef
 } from './copilot-cli'
 import { forwardToolToRenderer } from './copilot-bridge'

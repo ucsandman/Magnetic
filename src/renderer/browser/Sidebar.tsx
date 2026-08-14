@@ -154,7 +154,9 @@ export function Sidebar({ snapshot, selectedEventId, onSelectEvent }: SidebarPro
                     data-testid="agent-folder-remove"
                     title="Stop allowing this folder"
                     onClick={() => {
-                      saveAgentMediaFolders(agentMediaFolders.filter((existing) => existing !== folder))
+                      saveAgentMediaFolders(
+                        agentMediaFolders.filter((existing) => existing !== folder)
+                      )
                     }}
                   >
                     Remove

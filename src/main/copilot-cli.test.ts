@@ -143,19 +143,25 @@ describe('copilot tool server', () => {
 
     const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' }
     const list = await fetch(`http://127.0.0.1:${port}/tool`, {
-      method: 'POST', headers, body: JSON.stringify({ tool: '__list_tools', input: {} })
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ tool: '__list_tools', input: {} })
     })
     expect((await list.json()).result.tools[0].name).toBe('blade')
 
     const good = await fetch(`http://127.0.0.1:${port}/tool`, {
-      method: 'POST', headers, body: JSON.stringify({ tool: 'blade', input: { at: 1 } })
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ tool: 'blade', input: { at: 1 } })
     })
     expect(good.status).toBe(200)
     expect((await good.json()).result).toBe('done')
     expect(calls).toEqual([{ tool: 'blade', input: { at: 1 } }])
 
     const bad = await fetch(`http://127.0.0.1:${port}/tool`, {
-      method: 'POST', headers, body: JSON.stringify({ tool: 'boom', input: {} })
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ tool: 'boom', input: {} })
     })
     expect(bad.status).toBe(400)
     expect((await bad.json()).error).toBe('typed error')

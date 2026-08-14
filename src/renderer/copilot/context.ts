@@ -72,7 +72,8 @@ export function buildCopilotContext(
     lines.push('', '## Connected clips')
     for (const cc of sequence.connected) {
       const role = effectiveRole(cc)
-      const fileName = cc.titleData === undefined ? (assetNames.get(cc.assetId) ?? cc.assetId) : null
+      const fileName =
+        cc.titleData === undefined ? (assetNames.get(cc.assetId) ?? cc.assetId) : null
       const label =
         cc.titleData !== undefined
           ? `title "${cc.titleData.text}"`

@@ -78,7 +78,9 @@ describe('copilot CLI channels reject targeted malformed payloads', () => {
       string,
       (event: unknown, payload: unknown) => Promise<unknown>
     ][]
-    const handlerFor = (channel: string): ((event: unknown, payload: unknown) => Promise<unknown>) => {
+    const handlerFor = (
+      channel: string
+    ): ((event: unknown, payload: unknown) => Promise<unknown>) => {
       const found = handlers.find(([registered]) => registered === channel)
       if (found === undefined) throw new Error(`no handler registered for ${channel}`)
       return found[1]
@@ -109,7 +111,9 @@ describe('settingsSet copilotProvider validation', () => {
       string,
       (event: unknown, payload: unknown) => Promise<unknown>
     ][]
-    const handlerFor = (channel: string): ((event: unknown, payload: unknown) => Promise<unknown>) => {
+    const handlerFor = (
+      channel: string
+    ): ((event: unknown, payload: unknown) => Promise<unknown>) => {
       const found = handlers.find(([registered]) => registered === channel)
       if (found === undefined) throw new Error(`no handler registered for ${channel}`)
       return found[1]

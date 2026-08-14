@@ -310,7 +310,9 @@ export interface MagneticApi {
   /** The gateway's answer for a pushed agent request. */
   agentRespond(id: string, result: unknown): Promise<void>
   /** Copilot tool calls pushed from the turn's loopback server for the executor to run. */
-  onCopilotToolRequest(cb: (request: { id: string; tool: string; input: unknown }) => void): () => void
+  onCopilotToolRequest(
+    cb: (request: { id: string; tool: string; input: unknown }) => void
+  ): () => void
   /** The turn executor's answer for a pushed copilot tool request. */
   copilotToolRespond(id: string, ok: boolean, content: unknown): Promise<void>
   copilotCliTurn(args: {

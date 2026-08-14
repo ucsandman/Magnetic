@@ -28,7 +28,8 @@ export function registerMarketingHandoffIpc(): void {
 
   ipcMain.handle(IPC.marketingHandoffWrite, async (_event, payload: unknown) => {
     const parsed = marketingHandoffWritePayloadSchema.safeParse(payload)
-    if (!parsed.success) throw new Error(`Invalid marketing handoff payload: ${parsed.error.message}`)
+    if (!parsed.success)
+      throw new Error(`Invalid marketing handoff payload: ${parsed.error.message}`)
     const { destDir, fps, segments, srt, vtt } = parsed.data
     if (segments.length === 0) {
       throw new Error('Marketing handoff needs at least one "clip:" segment marker')

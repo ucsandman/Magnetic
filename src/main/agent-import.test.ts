@@ -65,9 +65,7 @@ describe('handleImportMedia — allowlist and existence', () => {
         return { importedIds: paths.map((_, i) => `id-${i}`), errors: [] }
       }
     })
-    await expect(handleImportMedia({ paths: [good, outside] }, d)).rejects.toThrow(
-      /outside.mp4/
-    )
+    await expect(handleImportMedia({ paths: [good, outside] }, d)).rejects.toThrow(/outside.mp4/)
     expect(called).toBe(false)
   })
 
@@ -82,9 +80,7 @@ describe('handleImportMedia — allowlist and existence', () => {
         return { importedIds: paths.map((_, i) => `id-${i}`), errors: [] }
       }
     })
-    await expect(handleImportMedia({ paths: [good, missing] }, d)).rejects.toThrow(
-      /missing\.mp4/
-    )
+    await expect(handleImportMedia({ paths: [good, missing] }, d)).rejects.toThrow(/missing\.mp4/)
     expect(called).toBe(false)
   })
 })
