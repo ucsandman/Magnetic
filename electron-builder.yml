@@ -16,6 +16,8 @@ files:
 extraResources:
   - from: resources/bin
     to: bin
+  - from: scripts/magnetic-mcp.mjs
+    to: magnetic-mcp.mjs
 win:
   executableName: Magnetic
 nsis:

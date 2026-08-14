@@ -229,7 +229,7 @@ After any accepted AI pass (Rough Cut or Copilot), the cut is graded with three 
 
 The **Copilot** tab is an editing partner: it sees the open sequence (clips and timing), the detected dead air, and the transcript, and it can both answer questions and make edits — but every edit lands on a **working copy**, never your timeline.
 
-1. First open asks for your Anthropic API key (get one at console.anthropic.com). It's stored in the app's settings on this machine, sent only to api.anthropic.com, and never logged. Change it later with the **Key…** button.
+1. Pick a provider at the top of the Copilot tab. **Claude subscription** drives your locally installed Claude Code CLI — install it and sign in once (run `claude` in a terminal), and Magnetic auto-selects this provider whenever the CLI is found. Each turn spawns the CLI, which adds roughly 1-2s of latency versus a direct API call. **API key** works the same as before: first open asks for your Anthropic API key (get one at console.anthropic.com), stored in the app's settings on this machine, sent only to api.anthropic.com, and never logged; change it later with the **Key…** button. If the CLI isn't found or isn't signed in, Magnetic falls back to the API key provider and the subscription option shows a recheck button.
 2. Ask ("where does it drag?") or instruct ("tighten this — cut the pauses and smooth the jumps"). Answers stream in with m:ss.s timecodes; while it works, a purple agent playhead marks where it's cutting.
 3. When a turn makes edits, a **proposal card** lists every change with its own checkbox, and the timeline shows the same ghost preview as Rough Cut: red hatch over what would go, a green strip showing the result. Your sequence has not changed yet — keep editing if you like (that voids the proposal).
 4. Scrub the **before/after** panes in the card — real frames from the playback engine, kept on the same moment of content on both sides (pause playback to see them).
@@ -238,6 +238,8 @@ The **Copilot** tab is an editing partner: it sees the open sequence (clips and 
 7. The **👁 vision toggle** (off by default) lets the copilot look at clip filmstrips for visually ambiguous asks ("which take looks better?") — those thumbnail strips are sent to the API only while the toggle is on and only when the copilot decides it needs pixels.
 
 Under the hood the copilot uses the same edit operations as your keyboard — blade, ripple delete, trim, roll, slip, move, transitions — each validated against the timeline's invariants before it can even be proposed. There is no export tool: only you can ship. If transcription hasn't finished, it will say so rather than guess.
+
+**Advanced / testing:** set `MAGNETIC_CLAUDE_BIN` to the path of a specific `claude` executable to override the one Magnetic resolves from `PATH` — useful for pointing at a non-default install or a test stub. Unset in normal use.
 
 ### Agent Access — let outside agents co-edit (MCP)
 
